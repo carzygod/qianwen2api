@@ -199,13 +199,23 @@ func (s *LoginSession) run() {
 		select {
 		case <-ticker.C:
 			_ = s.RefreshScreenshot()
-			count, _ := s.countCookies()
+			count, cookies := s.cookieSnapshot()
 			s.mu.Lock()
 			s.CookieCount = count
-			if s.Status != "captured" {
+			alreadyCaptured := s.AccountID != ""
+			if s.Status != "captured" && count > 0 {
+				s.Status = "login_detected"
+				s.Message = "Browser cookies detected after QR scan. Capturing account material automatically."
+			}
+			if s.Status != "captured" && !alreadyCaptured {
 				s.UpdatedAt = nowISO()
 			}
 			s.mu.Unlock()
+			if count > 0 && !alreadyCaptured && hasLikelyLoginCookie(cookies) {
+				if _, err := s.CaptureAccount(); err != nil {
+					s.setStatus("capture_failed", "Detected cookies, but failed to capture account: "+err.Error())
+				}
+			}
 		case <-expire.C:
 			s.setStatus("expired", "Login session expired. Start a new QR login session.")
 			s.stop()
@@ -301,7 +311,11 @@ func (s *LoginSession) Screenshot() []byte {
 func (s *LoginSession) CaptureAccount() (*AccountRecord, error) {
 	s.mu.Lock()
 	ctx := s.ctx
+	existingAccountID := s.AccountID
 	s.mu.Unlock()
+	if existingAccountID != "" {
+		return AppStore.GetAccount(existingAccountID)
+	}
 	if ctx == nil {
 		return nil, fmt.Errorf("login browser is not ready")
 	}
@@ -315,6 +329,13 @@ func (s *LoginSession) CaptureAccount() (*AccountRecord, error) {
 	}).Do(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("read cookies: %w", err)
+	}
+	if len(cookies) == 0 {
+		return nil, fmt.Errorf("no qianwen.com login cookies detected yet")
+	}
+	if !hasLikelyLoginCookie(cookies) {
+		names := cookieNames(cookies)
+		return nil, fmt.Errorf("cookies exist but do not look like a logged-in qianwen session yet: %s", strings.Join(names, ","))
 	}
 	cookieJSON, cookieString, err := serializeCookies(cookies)
 	if err != nil {
@@ -351,18 +372,52 @@ func (s *LoginSession) CaptureAccount() (*AccountRecord, error) {
 	return account, nil
 }
 
-func (s *LoginSession) countCookies() (int, error) {
+func (s *LoginSession) cookieSnapshot() (int, []*network.Cookie) {
 	s.mu.Lock()
 	ctx := s.ctx
 	s.mu.Unlock()
 	if ctx == nil {
-		return 0, fmt.Errorf("login browser is not ready")
+		return 0, nil
 	}
 	cookies, err := network.GetCookies().WithUrls([]string{"https://www.qianwen.com/", "https://api.qianwen.com/"}).Do(ctx)
 	if err != nil {
-		return 0, err
+		return 0, nil
 	}
-	return len(cookies), nil
+	return len(cookies), cookies
+}
+
+func hasLikelyLoginCookie(cookies []*network.Cookie) bool {
+	if len(cookies) == 0 {
+		return false
+	}
+	authMarkers := []string{
+		"login", "token", "session", "sid", "havana", "aliyun", "taobao",
+		"munb", "unb", "cookie2", "_tb_token_", "sgcookie", "x5sec", "isg", "tfstk",
+	}
+	for _, cookie := range cookies {
+		if cookie == nil {
+			continue
+		}
+		name := strings.ToLower(cookie.Name)
+		domain := strings.ToLower(cookie.Domain)
+		for _, marker := range authMarkers {
+			if strings.Contains(name, marker) || strings.Contains(domain, marker) {
+				return true
+			}
+		}
+	}
+	return len(cookies) >= 2
+}
+
+func cookieNames(cookies []*network.Cookie) []string {
+	names := make([]string, 0, len(cookies))
+	for _, cookie := range cookies {
+		if cookie == nil {
+			continue
+		}
+		names = append(names, cookie.Domain+"/"+cookie.Name)
+	}
+	return names
 }
 
 func serializeCookies(cookies []*network.Cookie) (string, string, error) {
