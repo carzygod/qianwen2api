@@ -2,6 +2,12 @@ package internal
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/hmac"
+	"crypto/sha1"
+	"crypto/sha256"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -16,6 +22,17 @@ import (
 	"github.com/chromedp/chromedp"
 	"github.com/google/uuid"
 )
+
+type capturedCookie struct {
+	Name     string  `json:"name"`
+	Value    string  `json:"value"`
+	Domain   string  `json:"domain"`
+	Path     string  `json:"path"`
+	Expires  float64 `json:"expires,omitempty"`
+	HTTPOnly bool    `json:"httpOnly"`
+	Secure   bool    `json:"secure"`
+	SameSite string  `json:"sameSite,omitempty"`
+}
 
 type LoginSession struct {
 	ID            string `json:"id"`
@@ -288,10 +305,11 @@ func (s *LoginSession) run() {
 		case <-ticker.C:
 			_ = s.RefreshScreenshot()
 			count, cookies := s.cookieSnapshot()
+			likelyLogin := hasLikelyLoginCookie(cookies)
 			s.mu.Lock()
 			s.CookieCount = count
 			alreadyCaptured := s.AccountID != ""
-			if s.Status != "captured" && count > 0 {
+			if s.Status != "captured" && likelyLogin {
 				s.Status = "login_detected"
 				s.Message = "Browser cookies detected after QR scan. Capturing account material automatically."
 			}
@@ -299,7 +317,7 @@ func (s *LoginSession) run() {
 				s.UpdatedAt = nowISO()
 			}
 			s.mu.Unlock()
-			if count > 0 && !alreadyCaptured && hasLikelyLoginCookie(cookies) {
+			if count > 0 && !alreadyCaptured && likelyLogin {
 				if _, err := s.CaptureAccount(); err != nil {
 					s.setStatus("capture_failed", "Detected cookies, but failed to capture account: "+err.Error())
 				}
@@ -404,35 +422,24 @@ func (s *LoginSession) CaptureAccount() (*AccountRecord, error) {
 	if existingAccountID != "" {
 		return AppStore.GetAccount(existingAccountID)
 	}
-	if ctx == nil {
-		return nil, fmt.Errorf("login browser is not ready")
-	}
 
-	cookies, err := network.GetCookies().WithUrls([]string{
-		"https://www.qianwen.com/",
-		"https://qianwen.com/",
-		"https://api.qianwen.com/",
-		"https://passport.aliyun.com/",
-		"https://login.taobao.com/",
-	}).Do(ctx)
+	cookies, source, err := s.captureLoginCookies()
 	if err != nil {
-		return nil, fmt.Errorf("read cookies: %w", err)
+		return nil, err
 	}
-	if len(cookies) == 0 {
-		return nil, fmt.Errorf("no qianwen.com login cookies detected yet")
-	}
-	if !hasLikelyLoginCookie(cookies) {
-		names := cookieNames(cookies)
-		return nil, fmt.Errorf("cookies exist but do not look like a logged-in qianwen session yet: %s", strings.Join(names, ","))
-	}
-	cookieJSON, cookieString, err := serializeCookies(cookies)
+	cookieJSON, cookieString, err := serializeCapturedCookies(cookies)
 	if err != nil {
 		return nil, err
 	}
 	var localStorageJSON string
-	_ = chromedp.Run(ctx, chromedp.Evaluate(`JSON.stringify(Object.fromEntries(Object.entries(localStorage)))`, &localStorageJSON))
 	var userAgent string
-	_ = chromedp.Run(ctx, chromedp.Evaluate(`navigator.userAgent`, &userAgent))
+	if ctx != nil {
+		_ = chromedp.Run(ctx, chromedp.Evaluate(`JSON.stringify(Object.fromEntries(Object.entries(localStorage)))`, &localStorageJSON))
+		_ = chromedp.Run(ctx, chromedp.Evaluate(`navigator.userAgent`, &userAgent))
+	}
+	if strings.TrimSpace(userAgent) == "" {
+		userAgent = generateRandomUserAgent()
+	}
 
 	account := &AccountRecord{
 		Name:             s.Name,
@@ -444,7 +451,7 @@ func (s *LoginSession) CaptureAccount() (*AccountRecord, error) {
 		LocalStorageJSON: localStorageJSON,
 		UserAgent:        userAgent,
 		CapabilitiesJSON: `{"chat":true,"image":true,"video":true}`,
-		LastError:        "QR login cookies captured. Real model probe is still required before this account is marked valid.",
+		LastError:        "QR login cookies captured from " + source + ". Real model probe is still required before this account is marked valid.",
 	}
 	if err := AppStore.CreateAccount(account); err != nil {
 		return nil, err
@@ -452,7 +459,7 @@ func (s *LoginSession) CaptureAccount() (*AccountRecord, error) {
 
 	s.mu.Lock()
 	s.Status = "captured"
-	s.Message = "Captured browser cookies into account pool. Run a real model test after the qianwen.com protocol adapter is implemented."
+	s.Message = "Captured browser cookies from " + source + " into account pool. Run a real model test after the qianwen.com protocol adapter is implemented."
 	s.AccountID = account.ID
 	s.CookieCount = len(cookies)
 	s.UpdatedAt = nowISO()
@@ -461,32 +468,151 @@ func (s *LoginSession) CaptureAccount() (*AccountRecord, error) {
 	return account, nil
 }
 
-func (s *LoginSession) cookieSnapshot() (int, []*network.Cookie) {
+func (s *LoginSession) cookieSnapshot() (int, []capturedCookie) {
+	cookies, err := s.readCDPCookies()
+	if err == nil && len(cookies) > 0 && hasLikelyLoginCookie(cookies) {
+		return len(cookies), cookies
+	}
+	profileCookies, profileErr := s.readProfileCookies()
+	if profileErr == nil && len(profileCookies) > 0 {
+		return len(profileCookies), profileCookies
+	}
+	if err == nil {
+		return len(cookies), cookies
+	}
+	return 0, nil
+}
+
+func (s *LoginSession) captureLoginCookies() ([]capturedCookie, string, error) {
+	failures := make([]string, 0, 2)
+	if cookies, err := s.readCDPCookies(); err == nil {
+		if len(cookies) == 0 {
+			failures = append(failures, "cdp: no cookies")
+		} else if !hasLikelyLoginCookie(cookies) {
+			failures = append(failures, "cdp: cookies exist but do not look logged in: "+strings.Join(cookieNames(cookies), ","))
+		} else {
+			return cookies, "cdp", nil
+		}
+	} else {
+		failures = append(failures, "cdp: "+err.Error())
+	}
+
+	if cookies, err := s.readProfileCookies(); err == nil {
+		if len(cookies) == 0 {
+			failures = append(failures, "profile: no cookies")
+		} else if !hasLikelyLoginCookie(cookies) {
+			failures = append(failures, "profile: cookies exist but do not look logged in: "+strings.Join(cookieNames(cookies), ","))
+		} else {
+			return cookies, "chromium profile", nil
+		}
+	} else {
+		failures = append(failures, "profile: "+err.Error())
+	}
+
+	return nil, "", fmt.Errorf("no qianwen.com login cookies detected yet (%s)", strings.Join(failures, "; "))
+}
+
+func (s *LoginSession) readCDPCookies() ([]capturedCookie, error) {
 	s.mu.Lock()
 	ctx := s.ctx
 	s.mu.Unlock()
 	if ctx == nil {
-		return 0, nil
+		return nil, fmt.Errorf("login browser is not ready")
 	}
-	cookies, err := network.GetCookies().WithUrls([]string{"https://www.qianwen.com/", "https://api.qianwen.com/"}).Do(ctx)
+	raw, err := network.GetCookies().WithUrls([]string{
+		"https://www.qianwen.com/",
+		"https://qianwen.com/",
+		"https://api.qianwen.com/",
+		"https://passport.aliyun.com/",
+		"https://login.taobao.com/",
+	}).Do(ctx)
 	if err != nil {
-		return 0, nil
+		return nil, fmt.Errorf("read cdp cookies: %w", err)
 	}
-	return len(cookies), cookies
+	cookies := make([]capturedCookie, 0, len(raw))
+	for _, cookie := range raw {
+		if cookie == nil || cookie.Name == "" || cookie.Value == "" {
+			continue
+		}
+		cookies = append(cookies, capturedCookie{
+			Name:     cookie.Name,
+			Value:    cookie.Value,
+			Domain:   cookie.Domain,
+			Path:     cookie.Path,
+			Expires:  float64(cookie.Expires),
+			HTTPOnly: cookie.HTTPOnly,
+			Secure:   cookie.Secure,
+			SameSite: string(cookie.SameSite),
+		})
+	}
+	return cookies, nil
 }
 
-func hasLikelyLoginCookie(cookies []*network.Cookie) bool {
+func (s *LoginSession) readProfileCookies() ([]capturedCookie, error) {
+	cookieDB := filepath.Join(s.userDataDir, "Default", "Cookies")
+	if _, err := os.Stat(cookieDB); err != nil {
+		return nil, fmt.Errorf("read chromium profile cookies: %w", err)
+	}
+	db, err := sql.Open("sqlite", "file:"+cookieDB+"?mode=ro")
+	if err != nil {
+		return nil, fmt.Errorf("open chromium profile cookie db: %w", err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+
+	rows, err := db.Query(`SELECT host_key, name, value, encrypted_value, path, expires_utc, is_httponly, is_secure, samesite FROM cookies`)
+	if err != nil {
+		return nil, fmt.Errorf("query chromium profile cookie db: %w", err)
+	}
+	defer rows.Close()
+
+	cookies := []capturedCookie{}
+	for rows.Next() {
+		var host, name, value, path string
+		var encrypted []byte
+		var expires int64
+		var httpOnly, secure, sameSite int
+		if err := rows.Scan(&host, &name, &value, &encrypted, &path, &expires, &httpOnly, &secure, &sameSite); err != nil {
+			return nil, fmt.Errorf("scan chromium profile cookie: %w", err)
+		}
+		if strings.TrimSpace(name) == "" {
+			continue
+		}
+		if value == "" && len(encrypted) > 0 {
+			decrypted, err := decryptChromiumCookie(host, encrypted)
+			if err != nil {
+				LogWarn("Failed to decrypt chromium profile cookie %s/%s: %v", host, name, err)
+				continue
+			}
+			value = decrypted
+		}
+		if value == "" {
+			continue
+		}
+		cookies = append(cookies, capturedCookie{
+			Name:     name,
+			Value:    value,
+			Domain:   host,
+			Path:     defaultString(path, "/"),
+			Expires:  chromeCookieExpiresToUnix(expires),
+			HTTPOnly: httpOnly == 1,
+			Secure:   secure == 1,
+			SameSite: chromeCookieSameSite(sameSite),
+		})
+	}
+	return cookies, rows.Err()
+}
+
+func hasLikelyLoginCookie(cookies []capturedCookie) bool {
 	if len(cookies) == 0 {
 		return false
 	}
 	authMarkers := []string{
 		"login", "token", "session", "sid", "havana", "aliyun", "taobao",
 		"munb", "unb", "cookie2", "_tb_token_", "sgcookie", "x5sec", "isg", "tfstk",
+		"tongyi_sso_ticket", "tongyi_sso_ticket_hash",
 	}
 	for _, cookie := range cookies {
-		if cookie == nil {
-			continue
-		}
 		name := strings.ToLower(cookie.Name)
 		domain := strings.ToLower(cookie.Domain)
 		for _, marker := range authMarkers {
@@ -498,45 +624,22 @@ func hasLikelyLoginCookie(cookies []*network.Cookie) bool {
 	return len(cookies) >= 2
 }
 
-func cookieNames(cookies []*network.Cookie) []string {
+func cookieNames(cookies []capturedCookie) []string {
 	names := make([]string, 0, len(cookies))
 	for _, cookie := range cookies {
-		if cookie == nil {
-			continue
-		}
 		names = append(names, cookie.Domain+"/"+cookie.Name)
 	}
 	return names
 }
 
-func serializeCookies(cookies []*network.Cookie) (string, string, error) {
-	type cookieItem struct {
-		Name     string  `json:"name"`
-		Value    string  `json:"value"`
-		Domain   string  `json:"domain"`
-		Path     string  `json:"path"`
-		Expires  float64 `json:"expires,omitempty"`
-		HTTPOnly bool    `json:"httpOnly"`
-		Secure   bool    `json:"secure"`
-		SameSite string  `json:"sameSite,omitempty"`
-	}
-	items := make([]cookieItem, 0, len(cookies))
+func serializeCapturedCookies(cookies []capturedCookie) (string, string, error) {
+	items := make([]capturedCookie, 0, len(cookies))
 	pairs := make([]string, 0, len(cookies))
 	for _, cookie := range cookies {
-		if cookie == nil || cookie.Name == "" {
+		if cookie.Name == "" || cookie.Value == "" {
 			continue
 		}
-		item := cookieItem{
-			Name:     cookie.Name,
-			Value:    cookie.Value,
-			Domain:   cookie.Domain,
-			Path:     cookie.Path,
-			Expires:  float64(cookie.Expires),
-			HTTPOnly: cookie.HTTPOnly,
-			Secure:   cookie.Secure,
-			SameSite: string(cookie.SameSite),
-		}
-		items = append(items, item)
+		items = append(items, cookie)
 		pairs = append(pairs, cookie.Name+"="+cookie.Value)
 	}
 	body, err := json.Marshal(items)
@@ -544,6 +647,107 @@ func serializeCookies(cookies []*network.Cookie) (string, string, error) {
 		return "", "", err
 	}
 	return string(body), strings.Join(pairs, "; "), nil
+}
+
+func decryptChromiumCookie(host string, encrypted []byte) (string, error) {
+	if len(encrypted) == 0 {
+		return "", nil
+	}
+	payload := encrypted
+	if len(payload) >= 3 {
+		prefix := string(payload[:3])
+		if prefix == "v10" || prefix == "v11" {
+			payload = payload[3:]
+		}
+	}
+	if len(payload) == 0 || len(payload)%aes.BlockSize != 0 {
+		return "", fmt.Errorf("invalid chromium encrypted cookie length")
+	}
+	block, err := aes.NewCipher(pbkdf2SHA1([]byte("peanuts"), []byte("saltysalt"), 1, 16))
+	if err != nil {
+		return "", err
+	}
+	iv := make([]byte, aes.BlockSize)
+	for i := range iv {
+		iv[i] = ' '
+	}
+	plain := make([]byte, len(payload))
+	cipher.NewCBCDecrypter(block, iv).CryptBlocks(plain, payload)
+	plain, err = pkcs7Unpad(plain, aes.BlockSize)
+	if err != nil {
+		return "", err
+	}
+	if len(plain) >= sha256.Size {
+		digest := sha256.Sum256([]byte(host))
+		if hmac.Equal(plain[:sha256.Size], digest[:]) {
+			plain = plain[sha256.Size:]
+		}
+	}
+	return string(plain), nil
+}
+
+func pbkdf2SHA1(password, salt []byte, iterations, keyLen int) []byte {
+	const hashLen = 20
+	blockCount := (keyLen + hashLen - 1) / hashLen
+	out := make([]byte, 0, blockCount*hashLen)
+	for block := 1; block <= blockCount; block++ {
+		mac := hmac.New(sha1.New, password)
+		mac.Write(salt)
+		mac.Write([]byte{byte(block >> 24), byte(block >> 16), byte(block >> 8), byte(block)})
+		u := mac.Sum(nil)
+		t := make([]byte, len(u))
+		copy(t, u)
+		for i := 1; i < iterations; i++ {
+			mac = hmac.New(sha1.New, password)
+			mac.Write(u)
+			u = mac.Sum(nil)
+			for j := range t {
+				t[j] ^= u[j]
+			}
+		}
+		out = append(out, t...)
+	}
+	return out[:keyLen]
+}
+
+func pkcs7Unpad(value []byte, blockSize int) ([]byte, error) {
+	if len(value) == 0 || len(value)%blockSize != 0 {
+		return nil, fmt.Errorf("invalid pkcs7 payload length")
+	}
+	padding := int(value[len(value)-1])
+	if padding == 0 || padding > blockSize || padding > len(value) {
+		return nil, fmt.Errorf("invalid pkcs7 padding")
+	}
+	for _, b := range value[len(value)-padding:] {
+		if int(b) != padding {
+			return nil, fmt.Errorf("invalid pkcs7 padding bytes")
+		}
+	}
+	return value[:len(value)-padding], nil
+}
+
+func chromeCookieExpiresToUnix(expires int64) float64 {
+	if expires <= 0 {
+		return 0
+	}
+	unixSeconds := float64(expires)/1000000 - 11644473600
+	if unixSeconds <= 0 {
+		return 0
+	}
+	return unixSeconds
+}
+
+func chromeCookieSameSite(value int) string {
+	switch value {
+	case 0:
+		return "None"
+	case 1:
+		return "Lax"
+	case 2:
+		return "Strict"
+	default:
+		return ""
+	}
 }
 
 func handleLoginSessions(w http.ResponseWriter, r *http.Request, path string) {
