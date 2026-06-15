@@ -29,6 +29,8 @@ func HandleAdminAPI(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case path == "/admin/summary" && r.Method == http.MethodGet:
 		handleAdminSummary(w, r)
+	case path == "/login-sessions" || strings.HasPrefix(path, "/login-sessions/"):
+		handleLoginSessions(w, r, path)
 	case path == "/accounts" && r.Method == http.MethodGet:
 		handleListAccounts(w, r)
 	case path == "/accounts" && r.Method == http.MethodPost:
@@ -296,11 +298,24 @@ const adminHTML = `<!doctype html>
     <section>
       <div class="section-head">
         <h2>账号池</h2>
-        <button class="primary" onclick="openAccountDialog()">新增账号</button>
+        <div style="display:flex; gap:10px;">
+          <button onclick="startLoginSession()">扫码登录</button>
+          <button class="primary" onclick="openAccountDialog()">新增账号</button>
+        </div>
       </div>
       <table>
         <thead><tr><th>名称</th><th>类型</th><th>状态</th><th>能力</th><th>最近错误</th><th>操作</th></tr></thead>
         <tbody id="accounts"></tbody>
+      </table>
+    </section>
+    <section>
+      <div class="section-head">
+        <h2>扫码登录会话</h2>
+        <button onclick="loadLoginSessions()">刷新</button>
+      </div>
+      <table>
+        <thead><tr><th>ID</th><th>名称</th><th>状态</th><th>Cookie</th><th>消息</th><th>操作</th></tr></thead>
+        <tbody id="loginSessions"></tbody>
       </table>
     </section>
     <section>
@@ -331,8 +346,23 @@ const adminHTML = `<!doctype html>
       </div>
     </form>
   </dialog>
+  <dialog id="loginDialog">
+    <h2>qianwen.com 扫码登录</h2>
+    <p class="hint">使用手机扫描下方截图中的 qianwen.com 登录二维码。扫码成功、页面变成已登录后，点击“保存当前登录态”。保存后账号会进入 SQLite 账号池，但仍需真实模型测试通过才会参与调度。</p>
+    <div style="background:#0b1015; border:1px solid var(--line); border-radius:18px; min-height:360px; display:flex; align-items:center; justify-content:center; overflow:hidden;">
+      <img id="loginShot" alt="qianwen login screenshot" style="max-width:100%; display:block;" />
+    </div>
+    <p class="hint" id="loginStatusText"></p>
+    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+      <button type="button" onclick="refreshLoginScreenshot()">刷新截图</button>
+      <button type="button" onclick="captureLoginSession()">保存当前登录态</button>
+      <button class="primary" type="button" onclick="loginDialog.close()">关闭</button>
+    </div>
+  </dialog>
   <script>
     const adminKey = new URLSearchParams(location.search).get('key') || '';
+    let currentLoginSessionId = '';
+    let loginPollTimer = 0;
     const headers = () => ({ 'Content-Type': 'application/json', 'X-Admin-Key': adminKey });
     async function api(path, options = {}) {
       const res = await fetch('/api' + path, { ...options, headers: { ...headers(), ...(options.headers || {}) } });
@@ -349,6 +379,7 @@ const adminHTML = `<!doctype html>
       port.textContent = summary.service.port;
       const accountData = await api('/accounts');
       accounts.innerHTML = accountData.data.map(a => '<tr><td>' + esc(a.name) + '<br><code>' + esc(a.id) + '</code></td><td>' + esc(a.type) + '</td><td>' + status(a.status) + '</td><td><code>' + esc(a.capabilities_json || '') + '</code></td><td>' + esc(a.last_error || '') + '</td><td><button onclick="testAccount(\'' + a.id + '\')">测试</button> <button class="danger" onclick="deleteAccount(\'' + a.id + '\')">删除</button></td></tr>').join('');
+      await loadLoginSessions();
       const taskData = await api('/tasks?limit=50');
       tasks.innerHTML = taskData.data.map(t => '<tr><td><code>' + esc(t.id) + '</code></td><td>' + esc(t.type) + '</td><td>' + esc(t.model || '') + '</td><td>' + status(t.status) + '</td><td>' + esc(t.error_message || '') + '</td><td>' + esc(t.created_at) + '</td></tr>').join('');
     }
@@ -372,6 +403,57 @@ const adminHTML = `<!doctype html>
     async function deleteAccount(id) {
       if (!confirm('删除该账号？')) return;
       await api('/accounts/' + id, { method: 'DELETE' });
+      await loadAll();
+    }
+    async function loadLoginSessions() {
+      const data = await api('/login-sessions');
+      loginSessions.innerHTML = data.data.map(s => '<tr><td><code>' + esc(s.id) + '</code></td><td>' + esc(s.name) + '</td><td>' + status(s.status) + '</td><td>' + esc(s.cookie_count || 0) + '</td><td>' + esc(s.message || '') + '</td><td><button onclick="showLoginSession(\'' + s.id + '\')">打开</button> <button onclick="captureSpecificLoginSession(\'' + s.id + '\')">保存</button></td></tr>').join('');
+    }
+    async function startLoginSession() {
+      const data = await api('/login-sessions', { method: 'POST', body: JSON.stringify({ name: 'qianwen-' + new Date().toISOString() }) });
+      currentLoginSessionId = data.data.id;
+      showLoginDialog(data.data);
+      await loadLoginSessions();
+    }
+    async function showLoginSession(id) {
+      const data = await api('/login-sessions/' + id);
+      currentLoginSessionId = id;
+      showLoginDialog(data.data);
+    }
+    function showLoginDialog(session) {
+      currentLoginSessionId = session.id;
+      loginShot.src = '/api/login-sessions/' + session.id + '/screenshot?key=' + encodeURIComponent(adminKey) + '&t=' + Date.now();
+      loginStatusText.textContent = session.status + ' · ' + (session.message || '');
+      loginDialog.showModal();
+      clearInterval(loginPollTimer);
+      loginPollTimer = setInterval(async () => {
+        if (!currentLoginSessionId || !loginDialog.open) return;
+        try {
+          const latest = await api('/login-sessions/' + currentLoginSessionId);
+          loginStatusText.textContent = latest.data.status + ' · ' + (latest.data.message || '') + ' · cookies=' + (latest.data.cookie_count || 0);
+          loginShot.src = '/api/login-sessions/' + currentLoginSessionId + '/screenshot?key=' + encodeURIComponent(adminKey) + '&t=' + Date.now();
+          await loadLoginSessions();
+        } catch {}
+      }, 6000);
+    }
+    async function refreshLoginScreenshot() {
+      if (!currentLoginSessionId) return;
+      await api('/login-sessions/' + currentLoginSessionId + '/refresh', { method: 'POST' });
+      loginShot.src = '/api/login-sessions/' + currentLoginSessionId + '/screenshot?key=' + encodeURIComponent(adminKey) + '&t=' + Date.now();
+      await loadLoginSessions();
+    }
+    async function captureSpecificLoginSession(id) {
+      currentLoginSessionId = id;
+      await captureLoginSession();
+    }
+    async function captureLoginSession() {
+      if (!currentLoginSessionId) return;
+      try {
+        const result = await api('/login-sessions/' + currentLoginSessionId + '/capture', { method: 'POST' });
+        alert('已保存账号：' + result.data.id);
+      } catch (err) {
+        alert(err.message);
+      }
       await loadAll();
     }
     function status(value) {
