@@ -14,18 +14,8 @@ import (
 )
 
 func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
-	if Cfg.AuthKey != "" {
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-		if token != Cfg.AuthKey {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
+	if !requireAPIAuth(w, r) {
+		return
 	}
 
 	var req ChatRequest
@@ -38,10 +28,15 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		req.Model = "tongyi-qwen3-max-model"
 	}
 
+	if GlobalPool == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "guest_pool_disabled", "Guest chat pool is not initialized. Set POOL_SIZE>0 or add a login chat adapter.")
+		return
+	}
+
 	account, err := GlobalPool.AcquireAccount()
 	if err != nil {
 		LogWarn("No available account: %v", err)
-		http.Error(w, "Too many requests", http.StatusTooManyRequests)
+		writeAPIError(w, http.StatusTooManyRequests, "no_available_guest_account", "No available guest account in the qianwen pool.")
 		return
 	}
 	defer GlobalPool.ReleaseAccount(account)

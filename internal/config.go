@@ -12,17 +12,30 @@ import (
 )
 
 type Config struct {
-	Port          string
-	PoolSize      int
-	AuthKey       string
-	LogLevel      string
-	RefreshPeriod time.Duration
+	Host              string
+	Port              string
+	PoolSize          int
+	AuthKey           string
+	AdminKey          string
+	LogLevel          string
+	RefreshPeriod     time.Duration
+	DataDir           string
+	DatabasePath      string
+	PublicBaseURL     string
+	DefaultChatModel  string
+	DefaultImageModel string
+	DefaultVideoModel string
 }
 
 var Cfg *Config
 
 func LoadConfig() {
 	godotenv.Load()
+
+	host := os.Getenv("HOST")
+	if host == "" {
+		host = "0.0.0.0"
+	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -38,6 +51,10 @@ func LoadConfig() {
 	}
 
 	authKey := os.Getenv("AUTH_KEY")
+	adminKey := os.Getenv("ADMIN_KEY")
+	if adminKey == "" {
+		adminKey = authKey
+	}
 
 	logLevel := os.Getenv("LOG_LEVEL")
 	if logLevel == "" {
@@ -52,12 +69,45 @@ func LoadConfig() {
 		}
 	}
 
+	dataDir := os.Getenv("DATA_DIR")
+	if dataDir == "" {
+		dataDir = "./data"
+	}
+
+	databasePath := os.Getenv("DATABASE_PATH")
+	if databasePath == "" {
+		databasePath = dataDir + "/qianwen-web-01.sqlite"
+	}
+
+	publicBaseURL := strings.TrimRight(os.Getenv("PUBLIC_BASE_URL"), "/")
+
+	defaultChatModel := os.Getenv("DEFAULT_CHAT_MODEL")
+	if defaultChatModel == "" {
+		defaultChatModel = "tongyi-qwen3-max-model"
+	}
+	defaultImageModel := os.Getenv("DEFAULT_IMAGE_MODEL")
+	if defaultImageModel == "" {
+		defaultImageModel = "Qwen-Image-2.0"
+	}
+	defaultVideoModel := os.Getenv("DEFAULT_VIDEO_MODEL")
+	if defaultVideoModel == "" {
+		defaultVideoModel = "Wan2.2"
+	}
+
 	Cfg = &Config{
-		Port:          port,
-		PoolSize:      poolSize,
-		AuthKey:       authKey,
-		LogLevel:      logLevel,
-		RefreshPeriod: time.Duration(refreshHours) * time.Hour,
+		Host:              host,
+		Port:              port,
+		PoolSize:          poolSize,
+		AuthKey:           authKey,
+		AdminKey:          adminKey,
+		LogLevel:          logLevel,
+		RefreshPeriod:     time.Duration(refreshHours) * time.Hour,
+		DataDir:           dataDir,
+		DatabasePath:      databasePath,
+		PublicBaseURL:     publicBaseURL,
+		DefaultChatModel:  defaultChatModel,
+		DefaultImageModel: defaultImageModel,
+		DefaultVideoModel: defaultVideoModel,
 	}
 }
 

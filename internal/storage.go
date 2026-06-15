@@ -20,12 +20,11 @@ type PoolData struct {
 }
 
 const (
-	dataDir  = "./data"
 	umidFile = "umid.json"
 )
 
 func SaveAccounts(accounts []*Account, lastRefresh time.Time) error {
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	if err := os.MkdirAll(Cfg.DataDir, 0755); err != nil {
 		return fmt.Errorf("failed to create data directory: %v", err)
 	}
 
@@ -49,7 +48,7 @@ func SaveAccounts(accounts []*Account, lastRefresh time.Time) error {
 		return fmt.Errorf("failed to marshal accounts: %v", err)
 	}
 
-	filePath := filepath.Join(dataDir, umidFile)
+	filePath := filepath.Join(Cfg.DataDir, umidFile)
 	if err := os.WriteFile(filePath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write accounts file: %v", err)
 	}
@@ -59,7 +58,7 @@ func SaveAccounts(accounts []*Account, lastRefresh time.Time) error {
 }
 
 func LoadAccounts() (*PoolData, error) {
-	filePath := filepath.Join(dataDir, umidFile)
+	filePath := filepath.Join(Cfg.DataDir, umidFile)
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return nil, nil

@@ -113,12 +113,28 @@ var ModelList = []string{
 
 func HandleModels(w http.ResponseWriter, r *http.Request) {
 	var models []ModelInfo
-	for _, id := range ModelList {
-		models = append(models, ModelInfo{
-			ID:      id,
-			Object:  "model",
-			OwnedBy: "qianwen",
-		})
+	if AppStore != nil {
+		rows, err := AppStore.ListModels()
+		if err == nil {
+			for _, model := range rows {
+				models = append(models, ModelInfo{
+					ID:      model.ID,
+					Object:  "model",
+					OwnedBy: "qianwen",
+				})
+			}
+		} else {
+			LogWarn("Failed to list models from sqlite: %v", err)
+		}
+	}
+	if len(models) == 0 {
+		for _, id := range ModelList {
+			models = append(models, ModelInfo{
+				ID:      id,
+				Object:  "model",
+				OwnedBy: "qianwen",
+			})
+		}
 	}
 
 	response := ModelsResponse{

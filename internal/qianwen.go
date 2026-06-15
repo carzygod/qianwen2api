@@ -140,17 +140,17 @@ func (qc *QianwenClient) RegisterAndGetTokens(bxUmidtoken string) (*RegisterResp
 	chid := generateChid()
 
 	payload := map[string]interface{}{
-		"screenResolution":      "2048x1152",
-		"cookieEnabled":         true,
-		"localStorageEnabled":   true,
-		"timezoneOffset":        "Asia/Shanghai",
-		"fontList":              []string{"Arial", "Calibri", "Century", "SimHei"},
-		"pluginList":            []interface{}{},
-		"language":              []string{"zh-CN"},
-		"unifyRelateGenerate":   []string{"qwen_business"},
-		"fingerprint":           fingerprint,
-		"businessScene":         "qwen_web",
-		"chid":                  chid,
+		"screenResolution":    "2048x1152",
+		"cookieEnabled":       true,
+		"localStorageEnabled": true,
+		"timezoneOffset":      "Asia/Shanghai",
+		"fontList":            []string{"Arial", "Calibri", "Century", "SimHei"},
+		"pluginList":          []interface{}{},
+		"language":            []string{"zh-CN"},
+		"unifyRelateGenerate": []string{"qwen_business"},
+		"fingerprint":         fingerprint,
+		"businessScene":       "qwen_web",
+		"chid":                chid,
 	}
 
 	bodyBytes, _ := json.Marshal(payload)

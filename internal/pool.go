@@ -40,7 +40,8 @@ func InitPool(size int) error {
 	}
 
 	if size == 0 {
-		return fmt.Errorf("pool size cannot be 0")
+		LogWarn("Guest account pool disabled because POOL_SIZE=0")
+		return nil
 	}
 
 	poolData, err := LoadAccounts()
