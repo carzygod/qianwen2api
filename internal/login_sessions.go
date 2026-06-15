@@ -265,8 +265,17 @@ func (s *LoginSession) run() {
 	}
 
 	_ = clickVisibleLogin(ctx)
+	if ctx.Err() != nil {
+		return
+	}
 	_ = clickLikelyTopRightLogin(ctx)
+	if ctx.Err() != nil {
+		return
+	}
 	_ = s.RefreshScreenshot()
+	if ctx.Err() != nil {
+		return
+	}
 	s.setStatus("waiting_scan", "Scan the QR code in the screenshot, then click Capture Login in Admin after the page changes to a logged-in state.")
 
 	ticker := time.NewTicker(6 * time.Second)
