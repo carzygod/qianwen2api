@@ -27,8 +27,9 @@ func main() {
 	}
 
 	if err := internal.InitPool(internal.Cfg.PoolSize); err != nil {
+		internal.GuestPoolInitError = err.Error()
 		internal.LogError("Failed to initialize guest pool: %v", err)
-		return
+		internal.LogWarn("Continuing without a ready guest pool. Admin, SQLite, account management, and media task routes remain available.")
 	}
 
 	http.HandleFunc("/health", internal.HandleHealth)

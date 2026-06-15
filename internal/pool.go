@@ -30,8 +30,10 @@ type AccountPool struct {
 }
 
 var GlobalPool *AccountPool
+var GuestPoolInitError string
 
 func InitPool(size int) error {
+	GuestPoolInitError = ""
 	LogInfo("Initializing account pool with size: %d", size)
 
 	GlobalPool = &AccountPool{
@@ -137,6 +139,15 @@ func InitPool(size int) error {
 
 	LogInfo("Account pool initialized successfully: %d accounts", len(GlobalPool.accounts))
 	return nil
+}
+
+func GuestPoolAccountCount() int {
+	if GlobalPool == nil {
+		return 0
+	}
+	GlobalPool.mu.Lock()
+	defer GlobalPool.mu.Unlock()
+	return len(GlobalPool.accounts)
 }
 
 func createAccountWithUmid(id int, umidToken string, lastRefresh time.Time) (*Account, error) {
