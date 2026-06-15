@@ -354,6 +354,7 @@ const adminHTML = `<!doctype html>
     </div>
     <p class="hint" id="loginStatusText"></p>
     <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+      <button type="button" onclick="clickLoginEntry()">点击登录入口</button>
       <button type="button" onclick="refreshLoginScreenshot()">刷新截图</button>
       <button type="button" onclick="captureLoginSession()">保存当前登录态</button>
       <button class="primary" type="button" onclick="loginDialog.close()">关闭</button>
@@ -439,6 +440,12 @@ const adminHTML = `<!doctype html>
     async function refreshLoginScreenshot() {
       if (!currentLoginSessionId) return;
       await api('/login-sessions/' + currentLoginSessionId + '/refresh', { method: 'POST' });
+      loginShot.src = '/api/login-sessions/' + currentLoginSessionId + '/screenshot?key=' + encodeURIComponent(adminKey) + '&t=' + Date.now();
+      await loadLoginSessions();
+    }
+    async function clickLoginEntry() {
+      if (!currentLoginSessionId) return;
+      await api('/login-sessions/' + currentLoginSessionId + '/click-login', { method: 'POST' });
       loginShot.src = '/api/login-sessions/' + currentLoginSessionId + '/screenshot?key=' + encodeURIComponent(adminKey) + '&t=' + Date.now();
       await loadLoginSessions();
     }

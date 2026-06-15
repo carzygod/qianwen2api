@@ -186,6 +186,7 @@ func (s *LoginSession) run() {
 	}
 
 	_ = clickVisibleLogin(ctx)
+	_ = clickLikelyTopRightLogin(ctx)
 	_ = s.RefreshScreenshot()
 	s.setStatus("waiting_scan", "Scan the QR code in the screenshot, then click Capture Login in Admin after the page changes to a logged-in state.")
 
@@ -241,6 +242,33 @@ func clickVisibleLogin(ctx context.Context) error {
 	if clicked {
 		LogInfo("Clicked a visible qianwen login trigger")
 	}
+	return nil
+}
+
+func clickLikelyTopRightLogin(ctx context.Context) error {
+	return chromedp.Run(ctx,
+		chromedp.MouseClickXY(1242, 30),
+		chromedp.Sleep(2*time.Second),
+	)
+}
+
+func (s *LoginSession) TriggerLogin() error {
+	s.mu.Lock()
+	ctx := s.ctx
+	s.mu.Unlock()
+	if ctx == nil {
+		return fmt.Errorf("login browser is not ready")
+	}
+	if err := clickVisibleLogin(ctx); err != nil {
+		LogWarn("Text login click failed: %v", err)
+	}
+	if err := clickLikelyTopRightLogin(ctx); err != nil {
+		return err
+	}
+	if err := s.RefreshScreenshot(); err != nil {
+		return err
+	}
+	s.setStatus("waiting_scan", "Clicked the likely qianwen.com login entry. Scan the QR code if it is visible, then capture the login state.")
 	return nil
 }
 
@@ -440,6 +468,16 @@ func handleLoginSessions(w http.ResponseWriter, r *http.Request, path string) {
 		}
 		if err := session.RefreshScreenshot(); err != nil {
 			writeAPIError(w, http.StatusFailedDependency, "screenshot_refresh_failed", err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{"data": session.view()})
+	case "click-login":
+		if r.Method != http.MethodPost {
+			writeAPIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed.")
+			return
+		}
+		if err := session.TriggerLogin(); err != nil {
+			writeAPIError(w, http.StatusFailedDependency, "login_click_failed", err.Error())
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{"data": session.view()})
