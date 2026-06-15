@@ -141,7 +141,7 @@ func (m *LoginSessionManager) Delete(id string) bool {
 	}
 	m.mu.Unlock()
 	if ok {
-		session.stop()
+		session.releaseBrowser()
 	}
 	return ok
 }
@@ -174,10 +174,45 @@ func (s *LoginSession) stop() {
 	s.mu.Lock()
 	cancel := s.cancel
 	s.cancel = nil
+	s.ctx = nil
 	s.mu.Unlock()
 	if cancel != nil {
 		cancel()
 	}
+}
+
+func (s *LoginSession) cleanupProfile() {
+	if s.userDataDir != "" {
+		_ = os.RemoveAll(s.userDataDir)
+	}
+}
+
+func (s *LoginSession) releaseBrowser() {
+	s.stop()
+	s.cleanupProfile()
+}
+
+func (s *LoginSession) Restart() error {
+	s.mu.Lock()
+	if s.Status == "captured" {
+		s.mu.Unlock()
+		return fmt.Errorf("captured login sessions cannot be refreshed; start a new account login instead")
+	}
+	s.mu.Unlock()
+
+	s.releaseBrowser()
+
+	s.mu.Lock()
+	s.Status = "refreshing"
+	s.Message = "Refreshing QR login session. A new Chromium profile is being created."
+	s.CookieCount = 0
+	s.AccountID = ""
+	s.screenshot = nil
+	s.UpdatedAt = nowISO()
+	s.mu.Unlock()
+
+	go s.run()
+	return nil
 }
 
 func (s *LoginSession) run() {
@@ -222,6 +257,9 @@ func (s *LoginSession) run() {
 		chromedp.Navigate("https://www.qianwen.com/"),
 		chromedp.Sleep(4*time.Second),
 	); err != nil {
+		if ctx.Err() != nil {
+			return
+		}
 		s.setStatus("failed", "Failed to open qianwen.com: "+err.Error())
 		return
 	}
@@ -259,7 +297,7 @@ func (s *LoginSession) run() {
 			}
 		case <-expire.C:
 			s.setStatus("expired", "Login session expired. Start a new QR login session.")
-			s.stop()
+			s.releaseBrowser()
 			return
 		case <-ctx.Done():
 			return
@@ -389,7 +427,7 @@ func (s *LoginSession) CaptureAccount() (*AccountRecord, error) {
 
 	account := &AccountRecord{
 		Name:             s.Name,
-		Type:             "login_cookie",
+		Type:             "qianwen_qr",
 		Status:           "unknown",
 		Enabled:          true,
 		CookieJSON:       cookieJSON,
@@ -410,6 +448,7 @@ func (s *LoginSession) CaptureAccount() (*AccountRecord, error) {
 	s.CookieCount = len(cookies)
 	s.UpdatedAt = nowISO()
 	s.mu.Unlock()
+	go s.releaseBrowser()
 	return account, nil
 }
 
@@ -562,8 +601,8 @@ func handleLoginSessions(w http.ResponseWriter, r *http.Request, path string) {
 			writeAPIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed.")
 			return
 		}
-		if err := session.RefreshScreenshot(); err != nil {
-			writeAPIError(w, http.StatusFailedDependency, "screenshot_refresh_failed", err.Error())
+		if err := session.Restart(); err != nil {
+			writeAPIError(w, http.StatusFailedDependency, "login_session_refresh_failed", err.Error())
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{"data": session.view()})
