@@ -92,6 +92,47 @@ func (m *LoginSessionManager) Get(id string) (*LoginSession, bool) {
 	return session, ok
 }
 
+func (m *LoginSessionManager) LatestActive() (*LoginSession, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var latest *LoginSession
+	for _, session := range m.sessions {
+		session.mu.Lock()
+		status := session.Status
+		createdAt := session.CreatedAt
+		session.mu.Unlock()
+		if status == "captured" || status == "failed" || status == "expired" {
+			continue
+		}
+		if latest == nil {
+			latest = session
+			continue
+		}
+		latest.mu.Lock()
+		latestCreatedAt := latest.CreatedAt
+		latest.mu.Unlock()
+		if createdAt > latestCreatedAt {
+			latest = session
+		}
+	}
+	return latest, latest != nil
+}
+
+func (m *LoginSessionManager) LatestOrStart() (*LoginSession, error) {
+	if session, ok := m.LatestActive(); ok {
+		return session, nil
+	}
+	view, err := m.Start("qianwen-auth-" + time.Now().Format("20060102-150405"))
+	if err != nil {
+		return nil, err
+	}
+	session, ok := m.Get(view.ID)
+	if !ok {
+		return nil, fmt.Errorf("login session disappeared after creation")
+	}
+	return session, nil
+}
+
 func (m *LoginSessionManager) Delete(id string) bool {
 	m.mu.Lock()
 	session, ok := m.sessions[id]
@@ -550,4 +591,103 @@ func handleLoginSessions(w http.ResponseWriter, r *http.Request, path string) {
 	default:
 		writeAPIError(w, http.StatusNotFound, "login_session_route_not_found", "Login session route not found.")
 	}
+}
+
+func HandleAuthStatus(w http.ResponseWriter, r *http.Request) {
+	if !requireAdminAuth(w, r) {
+		return
+	}
+	accounts, err := AppStore.ListAccounts()
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "account_list_failed", err.Error())
+		return
+	}
+	if accounts == nil {
+		accounts = []AccountRecord{}
+	}
+	masked := make([]AccountRecord, 0, len(accounts))
+	validCount := 0
+	for _, account := range accounts {
+		if account.Status == "valid" {
+			validCount++
+		}
+		masked = append(masked, maskAccount(account))
+	}
+	var latest interface{} = nil
+	if session, ok := QianwenLoginSessions.LatestActive(); ok {
+		latest = session.view()
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":                  true,
+		"provider":            "QIANWEN-WEB-01",
+		"logged_in":           len(accounts) > 0,
+		"valid_account_count": validCount,
+		"account_count":       len(accounts),
+		"accounts":            masked,
+		"login_session":       latest,
+	})
+}
+
+func HandleAuthLogin(w http.ResponseWriter, r *http.Request) {
+	if !requireAdminAuth(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost && r.Method != http.MethodGet {
+		writeAPIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use GET or POST.")
+		return
+	}
+	session, err := QianwenLoginSessions.LatestOrStart()
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "login_session_start_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"data": session.view(),
+		"qr":   "/auth/qr?key=" + Cfg.AdminKey,
+	})
+}
+
+func HandleAuthQR(w http.ResponseWriter, r *http.Request) {
+	if !requireAdminAuth(w, r) {
+		return
+	}
+	session, err := QianwenLoginSessions.LatestOrStart()
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "login_session_start_failed", err.Error())
+		return
+	}
+	for i := 0; i < 12; i++ {
+		image := session.Screenshot()
+		if len(image) > 0 {
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(image)
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	writeAPIError(w, http.StatusAccepted, "screenshot_not_ready", "Login screenshot is not ready yet. Refresh this URL in a few seconds.")
+}
+
+func HandleAuthCapture(w http.ResponseWriter, r *http.Request) {
+	if !requireAdminAuth(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeAPIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use POST.")
+		return
+	}
+	session, ok := QianwenLoginSessions.LatestActive()
+	if !ok {
+		writeAPIError(w, http.StatusNotFound, "login_session_not_found", "No active qianwen login session.")
+		return
+	}
+	account, err := session.CaptureAccount()
+	if err != nil {
+		writeAPIError(w, http.StatusFailedDependency, "login_capture_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"data":    maskAccount(*account),
+		"session": session.view(),
+	})
 }

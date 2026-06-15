@@ -33,6 +33,10 @@ func main() {
 	}
 
 	http.HandleFunc("/health", internal.HandleHealth)
+	http.HandleFunc("/auth/status", internal.HandleAuthStatus)
+	http.HandleFunc("/auth/qr", internal.HandleAuthQR)
+	http.HandleFunc("/auth/login", internal.HandleAuthLogin)
+	http.HandleFunc("/auth/capture", internal.HandleAuthCapture)
 	http.HandleFunc("/admin", internal.HandleAdminPage)
 	http.HandleFunc("/api/", internal.HandleAdminAPI)
 	http.HandleFunc("/v1/models", internal.HandleModels)
