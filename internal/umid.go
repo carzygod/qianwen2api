@@ -128,61 +128,68 @@ func GenerateBatchUMIDTokens(count int) ([]string, error) {
 	htmlContent := generateUMIDHTML()
 
 	for i := 0; i < count; i++ {
-		var token string
-		var status string
+		const maxTokenRetries = 3
+		tokenGenerated := false
+		for retry := 1; retry <= maxTokenRetries; retry++ {
+			var token string
+			var status string
 
-		LogDebug("Attempting to navigate for token %d/%d...", i+1, count)
-		err := chromedp.Run(browserCtx,
-			chromedp.Navigate("data:text/html,"+htmlContent),
-			chromedp.Sleep(500*time.Millisecond),
-		)
-
-		if err != nil {
-			LogWarn("Failed to navigate for UMID token %d/%d: %v", i+1, count, err)
-			time.Sleep(1 * time.Second)
-			i--
-			continue
-		}
-
-		maxAttempts := 20
-		attempt := 0
-		for attempt = 0; attempt < maxAttempts; attempt++ {
-			err = chromedp.Run(browserCtx,
-				chromedp.Evaluate(`window.umidStatus`, &status),
+			LogDebug("Attempting to navigate for token %d/%d (retry %d/%d)...", i+1, count, retry, maxTokenRetries)
+			err := chromedp.Run(browserCtx,
+				chromedp.Navigate("data:text/html,"+htmlContent),
+				chromedp.Sleep(500*time.Millisecond),
 			)
 
 			if err != nil {
-				break
+				LogWarn("Failed to navigate for UMID token %d/%d: %v", i+1, count, err)
+				time.Sleep(1 * time.Second)
+				continue
 			}
 
-			if status == "success" {
+			maxAttempts := 20
+			attempt := 0
+			for attempt = 0; attempt < maxAttempts; attempt++ {
 				err = chromedp.Run(browserCtx,
-					chromedp.Evaluate(`window.umidResult ? window.umidResult.tn : null`, &token),
+					chromedp.Evaluate(`window.umidStatus`, &status),
 				)
-				break
-			} else if status == "error" {
-				break
+
+				if err != nil {
+					break
+				}
+
+				if status == "success" {
+					err = chromedp.Run(browserCtx,
+						chromedp.Evaluate(`window.umidResult ? window.umidResult.tn : null`, &token),
+					)
+					break
+				} else if status == "error" {
+					break
+				}
+
+				time.Sleep(500 * time.Millisecond)
 			}
 
-			time.Sleep(500 * time.Millisecond)
+			if err != nil {
+				LogWarn("Failed to generate UMID token %d/%d: %v", i+1, count, err)
+				time.Sleep(1 * time.Second)
+				continue
+			}
+
+			if token == "" || status != "success" {
+				LogWarn("Empty or failed UMID token %d/%d (status: %s), retrying...", i+1, count, status)
+				time.Sleep(1 * time.Second)
+				continue
+			}
+
+			tokens = append(tokens, token)
+			tokenGenerated = true
+			LogInfo("Generated UMID token %d/%d (took ~%dms)", i+1, count, (attempt+1)*500)
+			break
 		}
 
-		if err != nil {
-			LogWarn("Failed to generate UMID token %d/%d: %v", i+1, count, err)
-			time.Sleep(1 * time.Second)
-			i--
-			continue
+		if !tokenGenerated {
+			return nil, fmt.Errorf("failed to generate UMID token %d/%d after %d retries", i+1, count, maxTokenRetries)
 		}
-
-		if token == "" || status != "success" {
-			LogWarn("Empty or failed UMID token %d/%d (status: %s), retrying...", i+1, count, status)
-			time.Sleep(1 * time.Second)
-			i--
-			continue
-		}
-
-		tokens = append(tokens, token)
-		LogInfo("Generated UMID token %d/%d (took ~%dms)", i+1, count, (attempt+1)*500)
 
 		if i < count-1 {
 			time.Sleep(200 * time.Millisecond)
