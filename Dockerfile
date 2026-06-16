@@ -16,7 +16,20 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o qianwen2api main.go
 
 FROM chromedp/headless-shell:latest
 
-RUN apt-get update && \
+RUN set -eux; \
+    if [ -f /etc/apt/sources.list ]; then \
+      sed -i \
+        -e 's|http://deb.debian.org/debian|http://mirrors.tencentyun.com/debian|g' \
+        -e 's|http://security.debian.org/debian-security|http://mirrors.tencentyun.com/debian-security|g' \
+        /etc/apt/sources.list; \
+    fi; \
+    if [ -d /etc/apt/sources.list.d ]; then \
+      sed -i \
+        -e 's|http://deb.debian.org/debian|http://mirrors.tencentyun.com/debian|g' \
+        -e 's|http://security.debian.org/debian-security|http://mirrors.tencentyun.com/debian-security|g' \
+        /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list 2>/dev/null || true; \
+    fi; \
+    apt-get update && \
     apt-get install -y ca-certificates dumb-init && \
     rm -rf /var/lib/apt/lists/*
 
