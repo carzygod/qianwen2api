@@ -294,6 +294,7 @@ func HandleVideoTask(w http.ResponseWriter, r *http.Request) {
 	}
 	id := strings.TrimPrefix(r.URL.Path, "/v1/video/generations/")
 	id = strings.TrimPrefix(id, "/v1/videos/generations/")
+	id = strings.TrimPrefix(id, "/v1/videos/")
 	id = strings.Trim(id, "/")
 	if strings.HasSuffix(id, "/cancel") {
 		id = strings.TrimSuffix(id, "/cancel")
