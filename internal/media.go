@@ -163,7 +163,7 @@ func HandleVideoGenerations(w http.ResponseWriter, r *http.Request) {
 	}
 	go executeVideoTask(context.Background(), task.ID, req)
 	fresh, _ := AppStore.GetTask(task.ID)
-	writeJSON(w, http.StatusOK, normalizeVideoTaskResponse(freshOrOriginal(fresh, task)))
+	writeJSON(w, http.StatusOK, formatVideoTaskResponse(r, freshOrOriginal(fresh, task)))
 }
 
 func HandleVideoGenerationsSync(w http.ResponseWriter, r *http.Request) {
@@ -216,7 +216,7 @@ func handleVideoGenerationsSyncRequest(w http.ResponseWriter, r *http.Request, r
 	if fresh.Status == "failed" {
 		status = http.StatusBadGateway
 	}
-	writeJSON(w, status, normalizeVideoTaskResponse(fresh))
+	writeJSON(w, status, formatVideoTaskResponse(r, fresh))
 }
 
 func executeVideoTask(ctx context.Context, taskID string, req VideoGenerationRequest) error {
@@ -316,7 +316,7 @@ func HandleVideoTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		task, _ := AppStore.GetTask(id)
-		writeJSON(w, http.StatusOK, normalizeVideoTaskResponse(task))
+		writeJSON(w, http.StatusOK, formatVideoTaskResponse(r, task))
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -336,7 +336,7 @@ func HandleVideoTask(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "task_get_failed", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, normalizeVideoTaskResponse(task))
+	writeJSON(w, http.StatusOK, formatVideoTaskResponse(r, task))
 }
 
 func HandleGenericTask(w http.ResponseWriter, r *http.Request) {
@@ -355,6 +355,17 @@ func HandleGenericTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, task)
+}
+
+func formatVideoTaskResponse(r *http.Request, task *TaskRecord) map[string]interface{} {
+	if isOpenAIVideoPath(r.URL.Path) {
+		return normalizeOpenAIVideoTaskResponse(task)
+	}
+	return normalizeVideoTaskResponse(task)
+}
+
+func isOpenAIVideoPath(path string) bool {
+	return path == "/v1/videos" || (strings.HasPrefix(path, "/v1/videos/") && !strings.HasPrefix(path, "/v1/videos/generations"))
 }
 
 func createProtocolRequiredTask(taskType, model, accountID string, req interface{}, code, message string) (*TaskRecord, error) {
@@ -426,6 +437,40 @@ func normalizeVideoTaskResponse(task *TaskRecord) map[string]interface{} {
 			Code:    task.ErrorCode,
 			Message: task.ErrorMessage,
 			Type:    "qianwen_web_error",
+		}
+	}
+	return resp
+}
+
+func normalizeOpenAIVideoTaskResponse(task *TaskRecord) map[string]interface{} {
+	resp := normalizeVideoTaskResponse(task)
+	if len(resp) == 0 {
+		return resp
+	}
+	status, _ := resp["status"].(string)
+	openAIStatus := normalizeOpenAIVideoStatus(status)
+	resp["object"] = "video"
+	resp["status"] = openAIStatus
+	resp["progress"] = openAIVideoProgress(openAIStatus)
+	resp["created_at"] = resp["created"]
+	delete(resp, "created")
+	if updated, ok := resp["updated"]; ok {
+		resp["completed_at"] = updated
+		delete(resp, "updated")
+	}
+	if duration, ok := resp["duration"]; ok {
+		resp["seconds"] = fmt.Sprintf("%v", duration)
+	}
+	if ratio, ok := resp["ratio"]; ok {
+		resp["size"] = fmt.Sprintf("%v", ratio)
+	}
+	if url, ok := resp["url"].(string); ok && url != "" {
+		resp["metadata"] = map[string]interface{}{"url": url}
+	}
+	if _, ok := resp["error"]; ok {
+		resp["error"] = map[string]interface{}{
+			"message": fmt.Sprintf("%v", resp["error"]),
+			"code":    "qianwen_web_error",
 		}
 	}
 	return resp
@@ -525,6 +570,34 @@ func normalizeTaskStatus(status string) string {
 		return "failed"
 	default:
 		return "queued"
+	}
+}
+
+func normalizeOpenAIVideoStatus(status string) string {
+	switch status {
+	case "running", "processing":
+		return "in_progress"
+	case "succeeded", "success":
+		return "completed"
+	case "cancelled", "canceled":
+		return "cancelled"
+	case "failed":
+		return "failed"
+	case "completed":
+		return "completed"
+	default:
+		return "queued"
+	}
+}
+
+func openAIVideoProgress(status string) int {
+	switch status {
+	case "completed", "failed", "cancelled":
+		return 100
+	case "in_progress":
+		return 30
+	default:
+		return 0
 	}
 }
 
