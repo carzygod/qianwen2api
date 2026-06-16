@@ -43,7 +43,7 @@ func LoadConfig() {
 	}
 
 	poolSizeStr := os.Getenv("POOL_SIZE")
-	poolSize := 20
+	poolSize := 0
 	if poolSizeStr != "" {
 		if ps, err := strconv.Atoi(poolSizeStr); err == nil && ps >= 0 {
 			poolSize = ps

@@ -459,7 +459,7 @@ func (s *LoginSession) CaptureAccount() (*AccountRecord, error) {
 
 	s.mu.Lock()
 	s.Status = "captured"
-	s.Message = "Captured browser cookies from " + source + " into account pool. Run a real model test after the qianwen.com protocol adapter is implemented."
+	s.Message = "Captured browser cookies from " + source + " into account pool. Run a real model test before routing traffic to this account."
 	s.AccountID = account.ID
 	s.CookieCount = len(cookies)
 	s.UpdatedAt = nowISO()
