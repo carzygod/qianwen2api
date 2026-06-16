@@ -1,25 +1,18 @@
 # QIANWEN-WEB-01 / qianwen2api
 
-QIANWEN-WEB-01 is the maintained qianwen.com Web reverse-proxy provider used by
-the gen2api stack.
+[English](#english) | [中文](#中文) | [Русский](#русский)
 
-Repository:
+## English
 
-```text
-https://github.com/carzygod/qianwen2api
-```
+QIANWEN-WEB-01 is the maintained qianwen.com Web reverse-proxy provider used by gen2api.
 
-Original upstream base:
+Maintained repository: https://github.com/carzygod/qianwen2api
 
-```text
-https://github.com/kao0312/qianwen2api
-```
+Original upstream base: https://github.com/kao0312/qianwen2api
 
-This service does not use official Qwen API keys. It drives logged-in qianwen.com
-Web sessions captured by QR login and exposes OpenAI-compatible APIs for chat,
-image generation, and video generation.
+This project does not use official Qwen API keys. It captures logged-in qianwen.com browser sessions through server-side Chromium QR login, stores accounts in SQLite, and exposes OpenAI-compatible APIs for chat, image generation, and async video generation.
 
-## Capabilities
+### Capabilities
 
 | Area | Status |
 |---|---|
@@ -27,17 +20,17 @@ image generation, and video generation.
 | Redis | Not used |
 | Admin WebUI | `/admin?key=<ADMIN_KEY>` |
 | Account import | QR login with server-side Chromium |
-| QR lifecycle | Create, refresh, confirm, delete; delete closes Chromium profile |
+| QR lifecycle | Create, refresh, confirm, delete; delete closes Chromium |
 | Account pool | Multiple qianwen.com Web accounts |
 | Account test | Sends a real default chat request and requires model output |
-| Chat API | OpenAI-compatible `/v1/chat/completions` |
-| Image API | OpenAI-compatible `/v1/images/generations` |
-| Video API | OpenAI-compatible `/v1/videos` plus legacy aliases |
+| Chat API | `/v1/chat/completions` |
+| Image API | `/v1/images/generations` |
+| Video API | `/v1/videos`, `/v1/video/generations`, `/v1/videos/generations` |
 | Video polling | `/v1/videos/{task_id}` plus legacy aliases |
-| Video cancel | Local cancel on `/v1/videos/{task_id}/cancel` plus legacy aliases |
+| Video cancel | `/v1/videos/{task_id}/cancel` plus legacy aliases |
 | NewAPI use | Can be added as an OpenAI-compatible channel for chat/image/video |
 
-## Models
+### Models
 
 | Capability | Model |
 |---|---|
@@ -46,19 +39,9 @@ image generation, and video generation.
 | Image | `Qwen-Image-2.0` |
 | Video | `HappyHorse 1.0` |
 
-The public video model is `HappyHorse 1.0`. The captured qianwen.com upstream
-provider model/root model is `happyhorse`.
+The public video model is `HappyHorse 1.0`. The observed upstream qianwen.com provider/root model is `happyhorse`.
 
-## Quick Start
-
-Local:
-
-```bash
-cp .env.example .env
-go run main.go
-```
-
-Docker:
+### Quick Start
 
 ```bash
 docker build -t qianwen-web-01:latest .
@@ -75,123 +58,19 @@ docker run -d --name qianwen-web-01 \
   qianwen-web-01:latest
 ```
 
-Open the Admin WebUI:
+Open `http://127.0.0.1:18002/admin?key=change-me-admin-key`.
 
-```text
-http://127.0.0.1:18002/admin?key=change-me-admin-key
-```
+### Add Accounts
 
-## Environment
+1. Click `Add account`.
+2. Enter a readable account name.
+3. Click `Generate QR`.
+4. Scan the QR code shown in the live screenshot.
+5. Wait until qianwen.com is logged in.
+6. Click `Confirm scan`.
+7. Run account `Test`; only accounts with real model output should receive traffic.
 
-| Variable | Default | Description |
-|---|---|---|
-| `HOST` | `0.0.0.0` | Listen host |
-| `PORT` | `8080` locally, `8000` in Docker | Listen port |
-| `AUTH_KEY` | empty | Bearer token for `/v1/*` APIs |
-| `ADMIN_KEY` | `AUTH_KEY` | Admin WebUI/API key |
-| `POOL_SIZE` | `0` | Guest fallback pool size; keep `0` for QR-account deployments |
-| `REFRESH_HOURS` | `10` | Guest UMID refresh period when guest pool is enabled |
-| `DATA_DIR` | `./data` | Data directory |
-| `DATABASE_PATH` | `./data/qianwen-web-01.sqlite` | SQLite database path |
-| `PUBLIC_BASE_URL` | empty | Public base URL shown in Admin summary |
-| `DEFAULT_CHAT_MODEL` | `tongyi-qwen3-max-model` | Default chat model |
-| `DEFAULT_IMAGE_MODEL` | `Qwen-Image-2.0` | Default image model |
-| `DEFAULT_VIDEO_MODEL` | `HappyHorse 1.0` | Default video model |
-| `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
-
-## Add Accounts
-
-Accounts are added through the Admin WebUI.
-
-1. Open `/admin?key=<ADMIN_KEY>`.
-2. Click `Add account`.
-3. Enter a readable account name.
-4. Click `Generate QR`.
-5. Scan the QR code shown in the screenshot.
-6. Wait until the screenshot shows a logged-in qianwen.com page.
-7. Click `Confirm scan`.
-8. Run `Test` on the saved account.
-
-The account should be routed only after the test succeeds. The test sends a real
-chat request to qianwen.com and requires a non-empty assistant response.
-
-## Public APIs
-
-All `/v1/*` APIs use:
-
-```text
-Authorization: Bearer <AUTH_KEY>
-```
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/health` | Runtime health |
-| `GET` | `/v1/models` | Model list |
-| `POST` | `/v1/chat/completions` | OpenAI-compatible chat |
-| `POST` | `/v1/images/generations` | OpenAI-compatible image generation |
-| `POST` | `/v1/videos` | OpenAI-compatible async video creation |
-| `GET` | `/v1/videos/{task_id}` | OpenAI-compatible video polling |
-| `POST` | `/v1/videos/{task_id}/cancel` | OpenAI-compatible local cancel |
-| `POST` | `/v1/video/generations` | Legacy async video creation |
-| `GET` | `/v1/video/generations/{task_id}` | Legacy video polling |
-| `POST` | `/v1/video/generations/{task_id}/cancel` | Legacy local cancel |
-| `POST` | `/v1/videos/generations` | Legacy plural alias |
-| `GET` | `/v1/videos/generations/{task_id}` | Legacy plural polling |
-| `POST` | `/v1/videos/generations/{task_id}/cancel` | Legacy plural cancel |
-| `POST` | `/v1/video/generations/sync` | Blocking video generation helper |
-| `GET` | `/v1/tasks/{task_id}` | Raw task record |
-
-## Admin APIs
-
-Admin requests accept `X-Admin-Key: <ADMIN_KEY>` or `/admin?key=<ADMIN_KEY>`.
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/admin/summary` | Runtime summary |
-| `GET` | `/api/accounts` | Account list |
-| `POST` | `/api/accounts` | Start a QR login session for a new account |
-| `DELETE` | `/api/accounts/{id}` | Delete account |
-| `POST` | `/api/accounts/{id}/test` | Real upstream account test |
-| `POST` | `/api/accounts/{id}/quota/sync` | Reserved quota sync endpoint |
-| `GET` | `/api/login-sessions` | QR login session list |
-| `POST` | `/api/login-sessions` | Start QR login session |
-| `DELETE` | `/api/login-sessions/{id}` | Delete QR session and close Chromium |
-| `GET` | `/api/login-sessions/{id}/screenshot` | Login screenshot / QR image |
-| `POST` | `/api/login-sessions/{id}/refresh` | Restart QR login session |
-| `POST` | `/api/login-sessions/{id}/capture` | Capture logged-in cookies into account pool |
-| `GET` | `/api/tasks` | Recent tasks |
-| `GET` | `/api/models` | SQLite model registry |
-
-## Examples
-
-Chat:
-
-```bash
-curl http://127.0.0.1:18002/v1/chat/completions \
-  -H "Authorization: Bearer change-me-api-key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "tongyi-qwen3-max-model",
-    "messages": [{"role": "user", "content": "Reply with OK only."}],
-    "stream": false
-  }'
-```
-
-Image:
-
-```bash
-curl http://127.0.0.1:18002/v1/images/generations \
-  -H "Authorization: Bearer change-me-api-key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "Qwen-Image-2.0",
-    "prompt": "a white cube on a desk, realistic photo style",
-    "n": 1,
-    "size": "1:1"
-  }'
-```
-
-OpenAI-compatible video:
+### API Example
 
 ```bash
 curl http://127.0.0.1:18002/v1/videos \
@@ -206,9 +85,168 @@ curl http://127.0.0.1:18002/v1/videos \
   }'
 ```
 
-Poll:
+## 中文
+
+QIANWEN-WEB-01 是 gen2api 使用的 qianwen.com / 通义千问 Web 反代维护版。
+
+维护仓库： https://github.com/carzygod/qianwen2api
+
+原始上游基底： https://github.com/kao0312/qianwen2api
+
+本项目不使用官方 Qwen API Key，而是通过服务端 Chromium 生成二维码，扫码后捕获 qianwen.com 登录会话，将账号保存到 SQLite 账号池，并对外提供对话、生图、异步生视频接口。
+
+### 能力
+
+| 模块 | 状态 |
+|---|---|
+| 存储 | SQLite |
+| Redis | 不使用 |
+| Admin WebUI | `/admin?key=<ADMIN_KEY>` |
+| 账号导入 | 服务端 Chromium 二维码扫码登录 |
+| 二维码生命周期 | 创建、刷新、确认、删除；删除会关闭 Chromium |
+| 账号池 | 多个 qianwen.com Web 登录账号 |
+| 账号测试 | 发送真实默认对话模型请求，拿到模型返回才算成功 |
+| 对话接口 | `/v1/chat/completions` |
+| 生图接口 | `/v1/images/generations` |
+| 生视频接口 | `/v1/videos`、`/v1/video/generations`、`/v1/videos/generations` |
+| 视频轮询 | `/v1/videos/{task_id}` 及旧别名 |
+| 视频取消 | `/v1/videos/{task_id}/cancel` 及旧别名 |
+| NewAPI | 可作为 OpenAI 兼容渠道接入对话 / 图片 / 视频 |
+
+### 模型
+
+| 能力 | 模型 |
+|---|---|
+| 对话 | `tongyi-qwen3-max-model` |
+| 对话 | `tongyi-qwen3-max-thinking` |
+| 生图 | `Qwen-Image-2.0` |
+| 生视频 | `HappyHorse 1.0` |
+
+对外视频模型名为 `HappyHorse 1.0`。网页侧实际观测到的 provider/root model 是 `happyhorse`。
+
+### 快速启动
 
 ```bash
-curl http://127.0.0.1:18002/v1/videos/<task_id> \
-  -H "Authorization: Bearer change-me-api-key"
+docker build -t qianwen-web-01:latest .
+docker run -d --name qianwen-web-01 \
+  -p 18002:8000 \
+  -e HOST=0.0.0.0 \
+  -e PORT=8000 \
+  -e AUTH_KEY=change-me-api-key \
+  -e ADMIN_KEY=change-me-admin-key \
+  -e POOL_SIZE=0 \
+  -e DATA_DIR=/app/data \
+  -e DATABASE_PATH=/app/data/qianwen-web-01.sqlite \
+  -v "$PWD/data:/app/data" \
+  qianwen-web-01:latest
+```
+
+打开 `http://127.0.0.1:18002/admin?key=change-me-admin-key`。
+
+### 新增账号
+
+1. 点击 `Add account`。
+2. 填写账号名称。
+3. 点击 `Generate QR`。
+4. 扫描实时截图中的二维码。
+5. 等待页面进入 qianwen.com 登录后状态。
+6. 点击 `Confirm scan` 保存账号。
+7. 点击账号 `Test`，只有真实模型请求返回成功的账号才进入可用路由。
+
+### 调用示例
+
+```bash
+curl http://127.0.0.1:18002/v1/videos \
+  -H "Authorization: Bearer change-me-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "HappyHorse 1.0",
+    "prompt": "一个白色立方体在桌面上缓慢旋转，真实摄影风格",
+    "duration": 5,
+    "resolution": "720P",
+    "ratio": "16:9"
+  }'
+```
+
+## Русский
+
+QIANWEN-WEB-01 — поддерживаемый Web reverse-proxy для qianwen.com, используемый в gen2api.
+
+Поддерживаемый репозиторий: https://github.com/carzygod/qianwen2api
+
+Исходная база upstream: https://github.com/kao0312/qianwen2api
+
+Проект не использует официальные Qwen API keys. Он создает QR login через server-side Chromium, сохраняет qianwen.com Web-сессии в SQLite и предоставляет OpenAI-compatible API для chat, image и async video generation.
+
+### Возможности
+
+| Area | Status |
+|---|---|
+| Storage | SQLite |
+| Redis | Не используется |
+| Admin WebUI | `/admin?key=<ADMIN_KEY>` |
+| Account import | QR login через server-side Chromium |
+| QR lifecycle | create, refresh, confirm, delete; delete закрывает Chromium |
+| Account pool | Несколько qianwen.com Web аккаунтов |
+| Account test | Реальный default chat request с проверкой ответа модели |
+| Chat API | `/v1/chat/completions` |
+| Image API | `/v1/images/generations` |
+| Video API | `/v1/videos`, `/v1/video/generations`, `/v1/videos/generations` |
+| Video polling | `/v1/videos/{task_id}` и legacy aliases |
+| Video cancel | `/v1/videos/{task_id}/cancel` и legacy aliases |
+| NewAPI use | Можно добавить как OpenAI-compatible канал |
+
+### Модели
+
+| Capability | Model |
+|---|---|
+| Chat | `tongyi-qwen3-max-model` |
+| Chat | `tongyi-qwen3-max-thinking` |
+| Image | `Qwen-Image-2.0` |
+| Video | `HappyHorse 1.0` |
+
+Публичное имя video-модели: `HappyHorse 1.0`. Наблюдаемое upstream provider/root model: `happyhorse`.
+
+### Быстрый старт
+
+```bash
+docker build -t qianwen-web-01:latest .
+docker run -d --name qianwen-web-01 \
+  -p 18002:8000 \
+  -e HOST=0.0.0.0 \
+  -e PORT=8000 \
+  -e AUTH_KEY=change-me-api-key \
+  -e ADMIN_KEY=change-me-admin-key \
+  -e POOL_SIZE=0 \
+  -e DATA_DIR=/app/data \
+  -e DATABASE_PATH=/app/data/qianwen-web-01.sqlite \
+  -v "$PWD/data:/app/data" \
+  qianwen-web-01:latest
+```
+
+Откройте `http://127.0.0.1:18002/admin?key=change-me-admin-key`.
+
+### Добавление аккаунтов
+
+1. Нажмите `Add account`.
+2. Введите понятное имя аккаунта.
+3. Нажмите `Generate QR`.
+4. Отсканируйте QR на live screenshot.
+5. Дождитесь входа в qianwen.com.
+6. Нажмите `Confirm scan`.
+7. Запустите `Test`; только аккаунты с реальным ответом модели должны получать трафик.
+
+### Пример API
+
+```bash
+curl http://127.0.0.1:18002/v1/videos \
+  -H "Authorization: Bearer change-me-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "HappyHorse 1.0",
+    "prompt": "a white cube slowly rotating on a desk, realistic photo style",
+    "duration": 5,
+    "resolution": "720P",
+    "ratio": "16:9"
+  }'
 ```
