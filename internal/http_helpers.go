@@ -3,6 +3,7 @@ package internal
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -54,17 +55,37 @@ func requireAPIAuth(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func requireAdminAuth(w http.ResponseWriter, r *http.Request) bool {
-	if Cfg.AdminKey == "" {
+	keys := []string{}
+	for _, key := range []string{Cfg.AdminKey, os.Getenv("ADMIN_KEY"), Cfg.AuthKey, os.Getenv("AUTH_KEY")} {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		seen := false
+		for _, existing := range keys {
+			if existing == key {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			keys = append(keys, key)
+		}
+	}
+	if len(keys) == 0 {
 		return true
 	}
-	if r.URL.Query().Get("key") == Cfg.AdminKey {
-		return true
+	candidates := []string{
+		strings.TrimSpace(r.URL.Query().Get("key")),
+		strings.TrimSpace(r.Header.Get("X-Admin-Key")),
+		strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")),
 	}
-	if r.Header.Get("X-Admin-Key") == Cfg.AdminKey {
-		return true
-	}
-	if strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ") == Cfg.AdminKey {
-		return true
+	for _, candidate := range candidates {
+		for _, key := range keys {
+			if candidate != "" && candidate == key {
+				return true
+			}
+		}
 	}
 	writeAPIError(w, http.StatusUnauthorized, "admin_unauthorized", "Missing or invalid admin key.")
 	return false

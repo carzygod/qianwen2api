@@ -28,6 +28,13 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		req.Model = "tongyi-qwen3-max-model"
 	}
 
+	if AppStore != nil {
+		if loginAccount, err := AppStore.SelectRunnableAccountForCapability("chat"); err == nil {
+			handleLoginChatRequest(w, r, &req, loginAccount)
+			return
+		}
+	}
+
 	if GlobalPool == nil {
 		writeAPIError(w, http.StatusServiceUnavailable, "guest_pool_disabled", "Guest chat pool is not initialized. Set POOL_SIZE>0 or add a login chat adapter.")
 		return
@@ -46,6 +53,85 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	} else {
 		handleNonStreamRequest(w, r, &req, account)
 	}
+}
+
+func handleLoginChatRequest(w http.ResponseWriter, r *http.Request, req *ChatRequest, account *AccountRecord) {
+	client, err := newQwenWebClient(*account)
+	if err != nil {
+		_ = AppStore.UpdateAccountStatus(account.ID, "invalid", err.Error(), false)
+		writeAPIError(w, http.StatusFailedDependency, "login_account_invalid", err.Error())
+		return
+	}
+	text, _, err := client.chat(r.Context(), req)
+	if err != nil {
+		_ = AppStore.UpdateAccountStatus(account.ID, "unknown", err.Error(), false)
+		writeAPIError(w, http.StatusBadGateway, "qianwen_chat_failed", err.Error())
+		return
+	}
+	_ = AppStore.UpdateAccountStatus(account.ID, "valid", "", true)
+
+	if req.Stream {
+		writeLoginChatStream(w, req, text)
+		return
+	}
+
+	stopReason := "stop"
+	response := ChatCompletionResponse{
+		ID:      fmt.Sprintf("chatcmpl-%s", uuid.New().String()[:29]),
+		Object:  "chat.completion",
+		Created: time.Now().Unix(),
+		Model:   req.Model,
+		Choices: []Choice{{
+			Index: 0,
+			Message: &MessageResp{
+				Role:    "assistant",
+				Content: text,
+			},
+			FinishReason: &stopReason,
+		}},
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(response)
+}
+
+func writeLoginChatStream(w http.ResponseWriter, req *ChatRequest, text string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+	completionID := fmt.Sprintf("chatcmpl-%s", uuid.New().String()[:29])
+	chunk := ChatCompletionChunk{
+		ID:      completionID,
+		Object:  "chat.completion.chunk",
+		Created: time.Now().Unix(),
+		Model:   req.Model,
+		Choices: []Choice{{
+			Index: 0,
+			Delta: Delta{Content: text},
+		}},
+	}
+	data, _ := json.Marshal(chunk)
+	fmt.Fprintf(w, "data: %s\n\n", data)
+	stopReason := "stop"
+	finalChunk := ChatCompletionChunk{
+		ID:      completionID,
+		Object:  "chat.completion.chunk",
+		Created: time.Now().Unix(),
+		Model:   req.Model,
+		Choices: []Choice{{
+			Index:        0,
+			Delta:        Delta{},
+			FinishReason: &stopReason,
+		}},
+	}
+	data, _ = json.Marshal(finalChunk)
+	fmt.Fprintf(w, "data: %s\n\n", data)
+	fmt.Fprintf(w, "data: [DONE]\n\n")
+	flusher.Flush()
 }
 
 func handleStreamRequest(w http.ResponseWriter, r *http.Request, req *ChatRequest, account *Account) {

@@ -2,10 +2,12 @@ package internal
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
+	"time"
 )
 
 type AccountTestResult struct {
@@ -61,9 +63,32 @@ func TestAccount(accountID, capability string) (*AccountTestResult, error) {
 		return result, nil
 	}
 
-	result.Status = "unknown"
-	result.Message = "Login-cookie probe requires qianwen.com logged-in protocol capture. The account is stored, but it will not be marked valid until a real model call succeeds."
-	_ = AppStore.UpdateAccountStatus(accountID, "unknown", result.Message, false)
+	client, err := newQwenWebClient(*account)
+	if err != nil {
+		result.Status = "invalid"
+		result.Message = err.Error()
+		_ = AppStore.UpdateAccountStatus(accountID, "invalid", result.Message, false)
+		return result, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	text, _, err := client.chat(ctx, &ChatRequest{
+		Model: Cfg.DefaultChatModel,
+		Messages: []Message{
+			{Role: "user", Content: "Say only: ok"},
+		},
+	})
+	if err != nil {
+		result.Status = "unknown"
+		result.Message = err.Error()
+		_ = AppStore.UpdateAccountStatus(accountID, "unknown", result.Message, false)
+		return result, nil
+	}
+	result.OK = true
+	result.Status = "valid"
+	result.Message = "Login account returned a non-empty assistant response from qianwen.com."
+	result.ResponseText = text
+	_ = AppStore.UpdateAccountStatus(accountID, "valid", "", true)
 	return result, nil
 }
 

@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -60,29 +61,52 @@ func HandleImageGenerations(w http.ResponseWriter, r *http.Request) {
 		req.N = 1
 	}
 
-	account, err := AppStore.SelectAccountForCapability("image")
+	account, err := AppStore.SelectRunnableAccountForCapability("image")
 	if err != nil {
 		if err == sql.ErrNoRows {
-			writeAPIError(w, http.StatusFailedDependency, "no_valid_image_account", "No valid image-capable qianwen.com login account is available. Add an account in Admin and complete a real image test first.")
+			writeAPIError(w, http.StatusFailedDependency, "no_image_account", "No image-capable qianwen.com login account is available. Add an account in Admin first.")
 			return
 		}
 		writeAPIError(w, http.StatusInternalServerError, "account_select_failed", err.Error())
 		return
 	}
 
-	task, err := createProtocolRequiredTask("image", req.Model, account.ID, req, "qianwen_image_protocol_required", "qianwen.com image generation protocol has not been captured yet. Use Admin account login/protocol capture before enabling image generation.")
+	client, err := newQwenWebClient(*account)
 	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "task_create_failed", err.Error())
+		writeAPIError(w, http.StatusFailedDependency, "login_account_invalid", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusNotImplemented, map[string]interface{}{
-		"error": ErrorDetail{
-			Code:    task.ErrorCode,
-			Message: task.ErrorMessage,
-			Type:    "qianwen_web_error",
-		},
-		"task_id": task.ID,
-		"status":  task.Status,
+	ctx, cancel := context.WithTimeout(r.Context(), 150*time.Second)
+	defer cancel()
+	state, events, err := client.submitImage(ctx, req)
+	if err != nil {
+		_ = AppStore.UpdateAccountStatus(account.ID, "unknown", err.Error(), false)
+		writeAPIError(w, http.StatusBadGateway, "qianwen_image_submit_failed", err.Error())
+		return
+	}
+	urls := filterMediaURLs(extractURLs(events), "image")
+	if len(urls) == 0 {
+		result, err := client.pollMedia(ctx, state, "image", 130*time.Second)
+		if err != nil {
+			_ = AppStore.UpdateAccountStatus(account.ID, "unknown", err.Error(), false)
+			writeAPIError(w, http.StatusGatewayTimeout, "qianwen_image_poll_failed", err.Error())
+			return
+		}
+		urls = result.URLs
+	}
+	urls = limitURLs(urls, req.N)
+	if len(urls) == 0 {
+		writeAPIError(w, http.StatusBadGateway, "qianwen_image_empty_result", "Qianwen image generation completed without a media URL.")
+		return
+	}
+	_ = AppStore.UpdateAccountStatus(account.ID, "valid", "", true)
+	data := make([]map[string]string, 0, len(urls))
+	for _, url := range urls {
+		data = append(data, map[string]string{"url": url})
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"created": time.Now().Unix(),
+		"data":    data,
 	})
 }
 
@@ -107,36 +131,76 @@ func HandleVideoGenerations(w http.ResponseWriter, r *http.Request) {
 		req.Model = Cfg.DefaultVideoModel
 	}
 	if req.Duration == 0 {
-		req.Duration = 5
+		req.Duration = 10
 	}
 
-	account, err := AppStore.SelectAccountForCapability("video")
+	account, err := AppStore.SelectRunnableAccountForCapability("video")
 	if err != nil {
 		if err == sql.ErrNoRows {
-			writeAPIError(w, http.StatusFailedDependency, "no_valid_video_account", "No valid video-capable qianwen.com login account is available. Add an account in Admin and complete a real video test first.")
+			writeAPIError(w, http.StatusFailedDependency, "no_video_account", "No video-capable qianwen.com login account is available. Add an account in Admin first.")
 			return
 		}
 		writeAPIError(w, http.StatusInternalServerError, "account_select_failed", err.Error())
 		return
 	}
 
-	task, err := createProtocolRequiredTask("video", req.Model, account.ID, req, "qianwen_video_protocol_required", "qianwen.com video generation protocol has not been captured yet. Use Admin account login/protocol capture before enabling video generation.")
+	client, err := newQwenWebClient(*account)
 	if err != nil {
+		writeAPIError(w, http.StatusFailedDependency, "login_account_invalid", err.Error())
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+	state, events, err := client.submitVideo(ctx, req)
+	if err != nil {
+		_ = AppStore.UpdateAccountStatus(account.ID, "unknown", err.Error(), false)
+		writeAPIError(w, http.StatusBadGateway, "qianwen_video_submit_failed", err.Error())
+		return
+	}
+	body, _ := json.Marshal(req)
+	task := &TaskRecord{
+		Type:                   "video",
+		Status:                 "processing",
+		Model:                  req.Model,
+		ProviderAccountID:      account.ID,
+		UpstreamTaskID:         state.ReqID,
+		UpstreamConversationID: state.SessionID,
+		RequestJSON:            string(body),
+		UpstreamRequestJSON:    marshalCompact(state),
+		UpstreamResponseJSON:   marshalCompact(events),
+		StartedAt:              nowISO(),
+	}
+	if err := AppStore.CreateTask(task); err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "task_create_failed", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusNotImplemented, map[string]interface{}{
+	go pollVideoTask(task.ID, *account, state)
+	_ = AppStore.UpdateAccountStatus(account.ID, "valid", "", true)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"id":      task.ID,
 		"object":  "video.generation",
 		"created": time.Now().Unix(),
 		"model":   req.Model,
 		"status":  task.Status,
-		"error": ErrorDetail{
-			Code:    task.ErrorCode,
-			Message: task.ErrorMessage,
-			Type:    "qianwen_web_error",
-		},
 	})
+}
+
+func pollVideoTask(taskID string, account AccountRecord, state *qwenRequestState) {
+	client, err := newQwenWebClient(account)
+	if err != nil {
+		_ = AppStore.UpdateTaskFailed(taskID, "login_account_invalid", err.Error(), "")
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	defer cancel()
+	result, err := client.pollMedia(ctx, state, "video", 7*time.Minute)
+	if err != nil {
+		_ = AppStore.UpdateTaskFailed(taskID, "qianwen_video_poll_failed", err.Error(), marshalCompact(result))
+		return
+	}
+	_ = AppStore.UpdateTaskCompleted(taskID, marshalCompact(map[string]interface{}{
+		"urls": result.URLs,
+	}), marshalCompact(result.Events))
 }
 
 func HandleVideoTask(w http.ResponseWriter, r *http.Request) {
@@ -220,6 +284,16 @@ func normalizeVideoTaskResponse(task *TaskRecord) map[string]interface{} {
 		}
 	}
 	return resp
+}
+
+func limitURLs(urls []string, n int) []string {
+	if n <= 0 {
+		n = 1
+	}
+	if len(urls) <= n {
+		return urls
+	}
+	return urls[:n]
 }
 
 func parseUnix(value string) int64 {

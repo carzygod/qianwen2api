@@ -368,6 +368,25 @@ func (s *Store) SelectAccountForCapability(capability string) (*AccountRecord, e
 	return nil, sql.ErrNoRows
 }
 
+func (s *Store) SelectRunnableAccountForCapability(capability string) (*AccountRecord, error) {
+	accounts, err := s.ListAccounts()
+	if err != nil {
+		return nil, err
+	}
+	for _, a := range accounts {
+		if !a.Enabled || a.Status == "invalid" {
+			continue
+		}
+		if strings.TrimSpace(a.CookieJSON) == "" && strings.TrimSpace(a.CookieString) == "" {
+			continue
+		}
+		if accountSupportsCapability(a, capability) {
+			return &a, nil
+		}
+	}
+	return nil, sql.ErrNoRows
+}
+
 func (s *Store) CreateTask(t *TaskRecord) error {
 	now := nowISO()
 	t.ID = uuid.New().String()
@@ -429,6 +448,27 @@ func (s *Store) GetTask(id string) (*TaskRecord, error) {
 		return nil, err
 	}
 	return &t, nil
+}
+
+func (s *Store) UpdateTaskRunning(id, upstreamRequestJSON, upstreamResponseJSON string) error {
+	now := nowISO()
+	_, err := s.db.Exec(`UPDATE qianwen_tasks SET status='processing', upstream_request_json=?, upstream_response_json=?, started_at=COALESCE(NULLIF(started_at,''), ?), updated_at=? WHERE id=?`,
+		upstreamRequestJSON, upstreamResponseJSON, now, now, id)
+	return err
+}
+
+func (s *Store) UpdateTaskCompleted(id, resultJSON, upstreamResponseJSON string) error {
+	now := nowISO()
+	_, err := s.db.Exec(`UPDATE qianwen_tasks SET status='succeeded', result_json=?, upstream_response_json=?, error_code='', error_message='', completed_at=?, updated_at=? WHERE id=?`,
+		resultJSON, upstreamResponseJSON, now, now, id)
+	return err
+}
+
+func (s *Store) UpdateTaskFailed(id, code, message, upstreamResponseJSON string) error {
+	now := nowISO()
+	_, err := s.db.Exec(`UPDATE qianwen_tasks SET status='failed', error_code=?, error_message=?, upstream_response_json=?, completed_at=?, updated_at=? WHERE id=?`,
+		code, message, upstreamResponseJSON, now, now, id)
+	return err
 }
 
 func scanAccount(scanner interface {
