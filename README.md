@@ -37,9 +37,9 @@ The default model registry contains concrete model names only:
 | Chat | `tongyi-qwen3-max-model` |
 | Chat | `tongyi-qwen3-max-thinking` |
 | Image | `Qwen-Image-2.0` |
-| Video | `Wan2.2` |
+| Video | `HappyHorse 1.0` |
 
-The video Web payload currently maps the qianwen.com video route to the observed `HappyHorse 1.0` upstream route while exposing `Wan2.2` as the OpenAI-compatible model id.
+The video Web payload uses the observed qianwen.com video route: the OpenAI-compatible model id is `HappyHorse 1.0`, and the upstream provider model/root model is `happyhorse`.
 
 ## Quick Start
 
@@ -88,7 +88,7 @@ http://127.0.0.1:18002/admin?key=change-me-admin-key
 | `PUBLIC_BASE_URL` | empty | Public base URL exposed in Admin summary |
 | `DEFAULT_CHAT_MODEL` | `tongyi-qwen3-max-model` | Default chat model |
 | `DEFAULT_IMAGE_MODEL` | `Qwen-Image-2.0` | Default image model |
-| `DEFAULT_VIDEO_MODEL` | `Wan2.2` | Default video model |
+| `DEFAULT_VIDEO_MODEL` | `HappyHorse 1.0` | Default video model |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 
 ## Add Accounts
@@ -205,7 +205,7 @@ curl http://127.0.0.1:18002/v1/video/generations \
   -H "Authorization: Bearer change-me-api-key" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "Wan2.2",
+    "model": "HappyHorse 1.0",
     "prompt": "a white cube slowly rotating on a desk, realistic photo style, five seconds",
     "duration": 5,
     "resolution": "720P",
@@ -237,7 +237,8 @@ Task responses use the shared provider video shape:
   "object": "video.generation.task",
   "provider": "QIANWEN-WEB-01",
   "status": "completed",
-  "model": "Wan2.2",
+  "model": "HappyHorse 1.0",
+  "provider_model": "happyhorse",
   "url": "https://workspace-zb-cdn.qianwen.com/...",
   "video_url": "https://workspace-zb-cdn.qianwen.com/...",
   "data": [
@@ -269,7 +270,7 @@ Use this service as a custom OpenAI-compatible provider:
 | Key | `<AUTH_KEY>` |
 | Chat models | `tongyi-qwen3-max-model`, `tongyi-qwen3-max-thinking` |
 | Image models | `Qwen-Image-2.0` |
-| Video models | `Wan2.2` |
+| Video models | `HappyHorse 1.0` |
 
 Standard NewAPI can proxy chat-shaped requests directly. Image/video compatibility depends on NewAPI support for the corresponding media endpoints and async video task polling routes.
 

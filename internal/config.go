@@ -91,7 +91,7 @@ func LoadConfig() {
 	}
 	defaultVideoModel := os.Getenv("DEFAULT_VIDEO_MODEL")
 	if defaultVideoModel == "" {
-		defaultVideoModel = "Wan2.2"
+		defaultVideoModel = QianwenVideoModelID
 	}
 
 	Cfg = &Config{

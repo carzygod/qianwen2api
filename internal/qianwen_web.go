@@ -189,7 +189,7 @@ func (c *qwenWebClient) submitVideo(ctx context.Context, req VideoGenerationRequ
 	state.Payload["ai_tool_scene"] = "zaodian_generate_video"
 	state.Payload["biz_data"] = mustJSONString(map[string]interface{}{
 		"req": map[string]interface{}{
-			"rootModel":    "happyhorse",
+			"rootModel":    QianwenVideoProviderModel,
 			"prompt":       req.Prompt,
 			"originPrompt": req.Prompt,
 			"genMode":      "vid_gen",
@@ -200,7 +200,7 @@ func (c *qwenWebClient) submitVideo(ctx context.Context, req VideoGenerationRequ
 			"scene_agent":      "ai_video",
 			"quota_use":        "2",
 			"video_duration":   fmt.Sprintf("%ds", duration),
-			"model":            "HappyHorse 1.0",
+			"model":            QianwenVideoModelID,
 			"video_ratio":      aspect,
 			"video_resolution": resolution,
 		},

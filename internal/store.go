@@ -223,7 +223,7 @@ func (s *Store) seedModels() error {
 		{ID: "tongyi-qwen3-max-model", Type: "chat", DisplayName: "Tongyi Qwen3 Max", UpstreamModel: "tongyi-qwen3-max-model", Enabled: true, IsDefault: Cfg.DefaultChatModel == "tongyi-qwen3-max-model", CreatedAt: now, UpdatedAt: now},
 		{ID: "tongyi-qwen3-max-thinking", Type: "chat", DisplayName: "Tongyi Qwen3 Max Thinking", UpstreamModel: "tongyi-qwen3-max-thinking", Enabled: true, IsDefault: Cfg.DefaultChatModel == "tongyi-qwen3-max-thinking", CreatedAt: now, UpdatedAt: now},
 		{ID: Cfg.DefaultImageModel, Type: "image", DisplayName: Cfg.DefaultImageModel, UpstreamModel: Cfg.DefaultImageModel, Enabled: true, IsDefault: true, ParamsSchemaJSON: `{"size":true,"aspect_ratio":true,"resolution":true,"reference_image":true}`, CreatedAt: now, UpdatedAt: now},
-		{ID: Cfg.DefaultVideoModel, Type: "video", DisplayName: Cfg.DefaultVideoModel, UpstreamModel: Cfg.DefaultVideoModel, Enabled: true, IsDefault: true, ParamsSchemaJSON: `{"duration":true,"aspect_ratio":true,"resolution":true,"first_frame_image":true}`, CreatedAt: now, UpdatedAt: now},
+		{ID: Cfg.DefaultVideoModel, Type: "video", DisplayName: Cfg.DefaultVideoModel, UpstreamModel: QianwenVideoProviderModel, Enabled: true, IsDefault: true, ParamsSchemaJSON: `{"duration":true,"aspect_ratio":true,"resolution":true,"first_frame_image":true}`, CreatedAt: now, UpdatedAt: now},
 	}
 	for _, m := range models {
 		_, err := s.db.Exec(`INSERT INTO qianwen_models

@@ -431,6 +431,7 @@ func normalizeVideoTaskResponse(task *TaskRecord) map[string]interface{} {
 }
 
 func normalizeVideoRequest(req *VideoGenerationRequest) {
+	req.Model = normalizeQianwenVideoModel(req.Model)
 	if req.Duration == 0 {
 		switch {
 		case req.DurationSeconds > 0:
@@ -466,6 +467,20 @@ func normalizeVideoRequest(req *VideoGenerationRequest) {
 		} else if req.FileID != "" {
 			req.FirstFrameImage = req.FileID
 		}
+	}
+}
+
+func normalizeQianwenVideoModel(model string) string {
+	trimmed := strings.TrimSpace(model)
+	if trimmed == "" {
+		return Cfg.DefaultVideoModel
+	}
+	compact := strings.NewReplacer(" ", "", "-", "", "_", "").Replace(strings.ToLower(trimmed))
+	switch compact {
+	case "wan2.2", "wan22", "happyhorse", "happyhorse1.0", "happyhorse10":
+		return QianwenVideoModelID
+	default:
+		return trimmed
 	}
 }
 
@@ -532,6 +547,9 @@ func taskProviderModel(task *TaskRecord) string {
 		if value, ok := req[key].(string); ok && strings.TrimSpace(value) != "" {
 			return value
 		}
+	}
+	if task.Type == "video" {
+		return QianwenVideoProviderModel
 	}
 	if value, ok := req["model"].(string); ok {
 		return value
