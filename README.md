@@ -25,6 +25,7 @@ This project does not use official Qwen API keys. It replays qianwen.com Web-ses
 | OpenAI-compatible image generation | Implemented via `/v1/images/generations` |
 | OpenAI-compatible video generation | Implemented via `/v1/video/generations` and `/v1/videos/generations` |
 | Video task polling | Implemented via `/v1/video/generations/{task_id}`, `/v1/videos/generations/{task_id}`, and `/v1/tasks/{task_id}` |
+| Video task cancel | Implemented as local cancel via `/v1/video/generations/{task_id}/cancel` and plural alias |
 | Guest pool | Optional fallback only; recommended `POOL_SIZE=0` |
 
 ## Models
@@ -122,9 +123,12 @@ Authorization: Bearer <AUTH_KEY>
 | `POST` | `/v1/chat/completions` | OpenAI-compatible chat |
 | `POST` | `/v1/images/generations` | Image generation; returns image URLs |
 | `POST` | `/v1/video/generations` | Async video task creation |
+| `POST` | `/v1/video/generations/sync` | Legacy synchronous video generation |
 | `GET` | `/v1/video/generations/{task_id}` | Video task polling |
+| `POST` | `/v1/video/generations/{task_id}/cancel` | Local task cancel |
 | `POST` | `/v1/videos/generations` | Compatibility alias |
 | `GET` | `/v1/videos/generations/{task_id}` | Compatibility alias polling |
+| `POST` | `/v1/videos/generations/{task_id}/cancel` | Compatibility alias cancel |
 | `GET` | `/v1/tasks/{task_id}` | Raw task record |
 
 ## Admin APIs
@@ -205,7 +209,8 @@ curl http://127.0.0.1:18002/v1/video/generations \
     "prompt": "a white cube slowly rotating on a desk, realistic photo style, five seconds",
     "duration": 5,
     "resolution": "720P",
-    "aspect_ratio": "16:9"
+    "ratio": "16:9",
+    "async": true
   }'
 ```
 
@@ -216,7 +221,43 @@ curl http://127.0.0.1:18002/v1/video/generations/<task_id> \
   -H "Authorization: Bearer change-me-api-key"
 ```
 
-Completed tasks return generated media URLs in `data.urls`.
+Cancel locally:
+
+```bash
+curl -X POST http://127.0.0.1:18002/v1/video/generations/<task_id>/cancel \
+  -H "Authorization: Bearer change-me-api-key"
+```
+
+Task responses use the shared provider video shape:
+
+```json
+{
+  "id": "task-id",
+  "task_id": "task-id",
+  "object": "video.generation.task",
+  "provider": "QIANWEN-WEB-01",
+  "status": "completed",
+  "model": "Wan2.2",
+  "url": "https://workspace-zb-cdn.qianwen.com/...",
+  "video_url": "https://workspace-zb-cdn.qianwen.com/...",
+  "data": [
+    {
+      "url": "https://workspace-zb-cdn.qianwen.com/...",
+      "video_url": "https://workspace-zb-cdn.qianwen.com/..."
+    }
+  ],
+  "result": {
+    "data": [
+      {
+        "url": "https://workspace-zb-cdn.qianwen.com/...",
+        "video_url": "https://workspace-zb-cdn.qianwen.com/..."
+      }
+    ]
+  }
+}
+```
+
+The request parser accepts `duration`, `duration_seconds`, `seconds`, `ratio`, `aspect_ratio`, `size`, `image_url`, `image`, `file_id`, `first_frame_image`, `wait`, `sync`, `blocking`, and `async:false` for compatibility. Current validated production path is text-to-video; image-to-video fields are preserved in the provider request shape for the captured Web protocol.
 
 ## NewAPI Integration
 

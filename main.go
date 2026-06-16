@@ -42,6 +42,8 @@ func main() {
 	http.HandleFunc("/v1/models", internal.HandleModels)
 	http.HandleFunc("/v1/chat/completions", internal.HandleChatCompletions)
 	http.HandleFunc("/v1/images/generations", internal.HandleImageGenerations)
+	http.HandleFunc("/v1/video/generations/sync", internal.HandleVideoGenerationsSync)
+	http.HandleFunc("/v1/videos/generations/sync", internal.HandleVideoGenerationsSync)
 	http.HandleFunc("/v1/video/generations", internal.HandleVideoGenerations)
 	http.HandleFunc("/v1/video/generations/", internal.HandleVideoTask)
 	http.HandleFunc("/v1/videos/generations", internal.HandleVideoGenerations)

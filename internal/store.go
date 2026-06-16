@@ -369,10 +369,22 @@ func (s *Store) SelectAccountForCapability(capability string) (*AccountRecord, e
 }
 
 func (s *Store) SelectRunnableAccountForCapability(capability string) (*AccountRecord, error) {
+	accounts, err := s.ListRunnableAccountsForCapability(capability)
+	if err != nil {
+		return nil, err
+	}
+	if len(accounts) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	return &accounts[0], nil
+}
+
+func (s *Store) ListRunnableAccountsForCapability(capability string) ([]AccountRecord, error) {
 	accounts, err := s.ListAccounts()
 	if err != nil {
 		return nil, err
 	}
+	var runnable []AccountRecord
 	for _, a := range accounts {
 		if !a.Enabled || a.Status == "invalid" {
 			continue
@@ -381,10 +393,10 @@ func (s *Store) SelectRunnableAccountForCapability(capability string) (*AccountR
 			continue
 		}
 		if accountSupportsCapability(a, capability) {
-			return &a, nil
+			runnable = append(runnable, a)
 		}
 	}
-	return nil, sql.ErrNoRows
+	return runnable, nil
 }
 
 func (s *Store) CreateTask(t *TaskRecord) error {
@@ -452,23 +464,72 @@ func (s *Store) GetTask(id string) (*TaskRecord, error) {
 
 func (s *Store) UpdateTaskRunning(id, upstreamRequestJSON, upstreamResponseJSON string) error {
 	now := nowISO()
-	_, err := s.db.Exec(`UPDATE qianwen_tasks SET status='processing', upstream_request_json=?, upstream_response_json=?, started_at=COALESCE(NULLIF(started_at,''), ?), updated_at=? WHERE id=?`,
+	_, err := s.db.Exec(`UPDATE qianwen_tasks SET status='processing', upstream_request_json=?, upstream_response_json=?, started_at=COALESCE(NULLIF(started_at,''), ?), updated_at=? WHERE id=? AND status NOT IN ('cancelled','succeeded')`,
 		upstreamRequestJSON, upstreamResponseJSON, now, now, id)
+	return err
+}
+
+func (s *Store) UpdateTaskRunningWithAccount(id, accountID, upstreamTaskID, upstreamConversationID, upstreamRequestJSON, upstreamResponseJSON string) error {
+	now := nowISO()
+	_, err := s.db.Exec(`UPDATE qianwen_tasks
+		SET status='processing',
+			provider_account_id=?,
+			upstream_task_id=?,
+			upstream_conversation_id=?,
+			upstream_request_json=?,
+			upstream_response_json=?,
+			started_at=COALESCE(NULLIF(started_at,''), ?),
+			updated_at=?
+		WHERE id=? AND status NOT IN ('cancelled','succeeded')`,
+		accountID, upstreamTaskID, upstreamConversationID, upstreamRequestJSON, upstreamResponseJSON, now, now, id)
 	return err
 }
 
 func (s *Store) UpdateTaskCompleted(id, resultJSON, upstreamResponseJSON string) error {
 	now := nowISO()
-	_, err := s.db.Exec(`UPDATE qianwen_tasks SET status='succeeded', result_json=?, upstream_response_json=?, error_code='', error_message='', completed_at=?, updated_at=? WHERE id=?`,
+	_, err := s.db.Exec(`UPDATE qianwen_tasks SET status='succeeded', result_json=?, upstream_response_json=?, error_code='', error_message='', completed_at=?, updated_at=? WHERE id=? AND status != 'cancelled'`,
 		resultJSON, upstreamResponseJSON, now, now, id)
 	return err
 }
 
 func (s *Store) UpdateTaskFailed(id, code, message, upstreamResponseJSON string) error {
 	now := nowISO()
-	_, err := s.db.Exec(`UPDATE qianwen_tasks SET status='failed', error_code=?, error_message=?, upstream_response_json=?, completed_at=?, updated_at=? WHERE id=?`,
+	_, err := s.db.Exec(`UPDATE qianwen_tasks SET status='failed', error_code=?, error_message=?, upstream_response_json=?, completed_at=?, updated_at=? WHERE id=? AND status != 'cancelled'`,
 		code, message, upstreamResponseJSON, now, now, id)
 	return err
+}
+
+func (s *Store) CancelTask(id string) error {
+	now := nowISO()
+	result, err := s.db.Exec(`UPDATE qianwen_tasks
+		SET status='cancelled',
+			error_code='cancelled',
+			error_message='Task was cancelled locally.',
+			completed_at=?,
+			updated_at=?
+		WHERE id=? AND status NOT IN ('succeeded','failed','cancelled')`,
+		now, now, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		if _, err := s.GetTask(id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) IsTaskCancelled(id string) (bool, error) {
+	task, err := s.GetTask(id)
+	if err != nil {
+		return false, err
+	}
+	return task.Status == "cancelled", nil
 }
 
 func scanAccount(scanner interface {

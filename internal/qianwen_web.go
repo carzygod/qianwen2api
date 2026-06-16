@@ -175,6 +175,17 @@ func (c *qwenWebClient) submitVideo(ctx context.Context, req VideoGenerationRequ
 	if aspect == "" {
 		aspect = "16:9"
 	}
+	params := map[string]interface{}{
+		"duration":   duration,
+		"resolution": resolution,
+		"size":       aspect,
+	}
+	if strings.TrimSpace(req.FirstFrameImage) != "" {
+		params["first_frame_image"] = strings.TrimSpace(req.FirstFrameImage)
+	}
+	if len(req.ReferenceImages) > 0 {
+		params["reference_images"] = req.ReferenceImages
+	}
 	state.Payload["ai_tool_scene"] = "zaodian_generate_video"
 	state.Payload["biz_data"] = mustJSONString(map[string]interface{}{
 		"req": map[string]interface{}{
@@ -182,11 +193,7 @@ func (c *qwenWebClient) submitVideo(ctx context.Context, req VideoGenerationRequ
 			"prompt":       req.Prompt,
 			"originPrompt": req.Prompt,
 			"genMode":      "vid_gen",
-			"params": map[string]interface{}{
-				"duration":   duration,
-				"resolution": resolution,
-				"size":       aspect,
-			},
+			"params":       params,
 		},
 		"bizScene": "genVideo",
 		"videoReportParams": map[string]interface{}{

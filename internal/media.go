@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -28,13 +29,25 @@ type VideoGenerationRequest struct {
 	Model           string      `json:"model"`
 	Prompt          string      `json:"prompt"`
 	Duration        int         `json:"duration"`
+	DurationSeconds int         `json:"duration_seconds"`
+	Seconds         int         `json:"seconds"`
+	Ratio           string      `json:"ratio"`
+	Size            string      `json:"size"`
 	AspectRatio     string      `json:"aspect_ratio"`
 	Resolution      string      `json:"resolution"`
+	ImageURL        string      `json:"image_url"`
+	Image           string      `json:"image"`
+	FileID          string      `json:"file_id"`
 	FirstFrameImage string      `json:"first_frame_image"`
 	ReferenceImages []string    `json:"reference_images"`
 	Seed            interface{} `json:"seed"`
 	NegativePrompt  string      `json:"negative_prompt"`
 	Metadata        interface{} `json:"metadata"`
+	AccountID       string      `json:"account_id"`
+	Async           *bool       `json:"async"`
+	Wait            bool        `json:"wait"`
+	Sync            bool        `json:"sync"`
+	Blocking        bool        `json:"blocking"`
 }
 
 func HandleImageGenerations(w http.ResponseWriter, r *http.Request) {
@@ -130,77 +143,149 @@ func HandleVideoGenerations(w http.ResponseWriter, r *http.Request) {
 	if req.Model == "" {
 		req.Model = Cfg.DefaultVideoModel
 	}
-	if req.Duration == 0 {
-		req.Duration = 10
-	}
+	normalizeVideoRequest(&req)
 
-	account, err := AppStore.SelectRunnableAccountForCapability("video")
-	if err != nil {
-		if err == sql.ErrNoRows {
-			writeAPIError(w, http.StatusFailedDependency, "no_video_account", "No video-capable qianwen.com login account is available. Add an account in Admin first.")
-			return
-		}
-		writeAPIError(w, http.StatusInternalServerError, "account_select_failed", err.Error())
+	if wantsSyncVideo(req) {
+		handleVideoGenerationsSyncRequest(w, r, req)
 		return
 	}
 
-	client, err := newQwenWebClient(*account)
-	if err != nil {
-		writeAPIError(w, http.StatusFailedDependency, "login_account_invalid", err.Error())
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
-	defer cancel()
-	state, events, err := client.submitVideo(ctx, req)
-	if err != nil {
-		_ = AppStore.UpdateAccountStatus(account.ID, "unknown", err.Error(), false)
-		writeAPIError(w, http.StatusBadGateway, "qianwen_video_submit_failed", err.Error())
-		return
-	}
 	body, _ := json.Marshal(req)
 	task := &TaskRecord{
-		Type:                   "video",
-		Status:                 "processing",
-		Model:                  req.Model,
-		ProviderAccountID:      account.ID,
-		UpstreamTaskID:         state.ReqID,
-		UpstreamConversationID: state.SessionID,
-		RequestJSON:            string(body),
-		UpstreamRequestJSON:    marshalCompact(state),
-		UpstreamResponseJSON:   marshalCompact(events),
-		StartedAt:              nowISO(),
+		Type:        "video",
+		Status:      "queued",
+		Model:       req.Model,
+		RequestJSON: string(body),
 	}
 	if err := AppStore.CreateTask(task); err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "task_create_failed", err.Error())
 		return
 	}
-	go pollVideoTask(task.ID, *account, state)
-	_ = AppStore.UpdateAccountStatus(account.ID, "valid", "", true)
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"id":      task.ID,
-		"object":  "video.generation",
-		"created": time.Now().Unix(),
-		"model":   req.Model,
-		"status":  task.Status,
-	})
+	go executeVideoTask(context.Background(), task.ID, req)
+	fresh, _ := AppStore.GetTask(task.ID)
+	writeJSON(w, http.StatusOK, normalizeVideoTaskResponse(freshOrOriginal(fresh, task)))
 }
 
-func pollVideoTask(taskID string, account AccountRecord, state *qwenRequestState) {
+func HandleVideoGenerationsSync(w http.ResponseWriter, r *http.Request) {
+	if !requireAPIAuth(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeAPIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Only POST is supported.")
+		return
+	}
+	var req VideoGenerationRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	if strings.TrimSpace(req.Prompt) == "" {
+		writeAPIError(w, http.StatusBadRequest, "prompt_required", "prompt is required.")
+		return
+	}
+	if req.Model == "" {
+		req.Model = Cfg.DefaultVideoModel
+	}
+	normalizeVideoRequest(&req)
+	handleVideoGenerationsSyncRequest(w, r, req)
+}
+
+func handleVideoGenerationsSyncRequest(w http.ResponseWriter, r *http.Request, req VideoGenerationRequest) {
+	body, _ := json.Marshal(req)
+	task := &TaskRecord{
+		Type:        "video",
+		Status:      "queued",
+		Model:       req.Model,
+		RequestJSON: string(body),
+	}
+	if err := AppStore.CreateTask(task); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "task_create_failed", err.Error())
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 9*time.Minute)
+	defer cancel()
+	if err := executeVideoTask(ctx, task.ID, req); err != nil {
+		LogWarn("Synchronous video generation task %s failed: %v", task.ID, err)
+	}
+	fresh, err := AppStore.GetTask(task.ID)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "task_get_failed", err.Error())
+		return
+	}
+	status := http.StatusOK
+	if fresh.Status == "failed" {
+		status = http.StatusBadGateway
+	}
+	writeJSON(w, status, normalizeVideoTaskResponse(fresh))
+}
+
+func executeVideoTask(ctx context.Context, taskID string, req VideoGenerationRequest) error {
+	accounts, err := videoCandidateAccounts(req)
+	if err != nil {
+		_ = AppStore.UpdateTaskFailed(taskID, "no_video_account", err.Error(), "")
+		return err
+	}
+
+	var attemptErrors []string
+	for _, account := range accounts {
+		if cancelled, _ := AppStore.IsTaskCancelled(taskID); cancelled {
+			return nil
+		}
+		err := submitAndPollVideoWithAccount(ctx, taskID, req, account)
+		if err == nil {
+			return nil
+		}
+		attemptErrors = append(attemptErrors, fmt.Sprintf("%s: %s", account.ID, err.Error()))
+		_ = AppStore.UpdateAccountStatus(account.ID, "unknown", err.Error(), false)
+		if strings.TrimSpace(req.AccountID) != "" {
+			break
+		}
+		LogWarn("Qianwen video account %s failed, trying next account if available: %v", account.ID, err)
+	}
+	message := strings.Join(attemptErrors, "; ")
+	if message == "" {
+		message = "No video-capable qianwen.com login account is available."
+	}
+	_ = AppStore.UpdateTaskFailed(taskID, "qianwen_video_generation_failed", message, "")
+	return fmt.Errorf("%s", message)
+}
+
+func submitAndPollVideoWithAccount(ctx context.Context, taskID string, req VideoGenerationRequest, account AccountRecord) error {
 	client, err := newQwenWebClient(account)
 	if err != nil {
-		_ = AppStore.UpdateTaskFailed(taskID, "login_account_invalid", err.Error(), "")
-		return
+		return fmt.Errorf("login_account_invalid: %w", err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
-	defer cancel()
-	result, err := client.pollMedia(ctx, state, "video", 7*time.Minute)
+	submitCtx, cancelSubmit := context.WithTimeout(ctx, 90*time.Second)
+	state, events, err := client.submitVideo(submitCtx, req)
+	cancelSubmit()
+	if err != nil {
+		return fmt.Errorf("qianwen_video_submit_failed: %w", err)
+	}
+	_ = AppStore.UpdateTaskRunningWithAccount(taskID, account.ID, state.ReqID, state.SessionID, marshalCompact(state), marshalCompact(events))
+
+	pollCtx, cancelPoll := context.WithTimeout(ctx, 8*time.Minute)
+	defer cancelPoll()
+	result, err := client.pollMedia(pollCtx, state, "video", 7*time.Minute)
 	if err != nil {
 		_ = AppStore.UpdateTaskFailed(taskID, "qianwen_video_poll_failed", err.Error(), marshalCompact(result))
-		return
+		return fmt.Errorf("qianwen_video_poll_failed: %w", err)
+	}
+	if len(result.URLs) == 0 {
+		return fmt.Errorf("qianwen video generation completed without a media URL")
+	}
+	data := make([]map[string]interface{}, 0, len(result.URLs))
+	for _, url := range result.URLs {
+		data = append(data, map[string]interface{}{
+			"url":       url,
+			"video_url": url,
+		})
 	}
 	_ = AppStore.UpdateTaskCompleted(taskID, marshalCompact(map[string]interface{}{
+		"data": data,
 		"urls": result.URLs,
 	}), marshalCompact(result.Events))
+	_ = AppStore.UpdateAccountStatus(account.ID, "valid", "", true)
+	return nil
 }
 
 func HandleVideoTask(w http.ResponseWriter, r *http.Request) {
@@ -210,6 +295,33 @@ func HandleVideoTask(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/v1/video/generations/")
 	id = strings.TrimPrefix(id, "/v1/videos/generations/")
 	id = strings.Trim(id, "/")
+	if strings.HasSuffix(id, "/cancel") {
+		id = strings.TrimSuffix(id, "/cancel")
+		id = strings.Trim(id, "/")
+		if r.Method != http.MethodPost {
+			writeAPIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Only POST is supported.")
+			return
+		}
+		if id == "" {
+			writeAPIError(w, http.StatusNotFound, "task_id_required", "Task id is required.")
+			return
+		}
+		if err := AppStore.CancelTask(id); err != nil {
+			if err == sql.ErrNoRows {
+				writeAPIError(w, http.StatusNotFound, "task_not_found", "Task not found.")
+				return
+			}
+			writeAPIError(w, http.StatusInternalServerError, "task_cancel_failed", err.Error())
+			return
+		}
+		task, _ := AppStore.GetTask(id)
+		writeJSON(w, http.StatusOK, normalizeVideoTaskResponse(task))
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeAPIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Only GET is supported.")
+		return
+	}
 	if id == "" {
 		writeAPIError(w, http.StatusNotFound, "task_id_required", "Task id is required.")
 		return
@@ -263,17 +375,49 @@ func createProtocolRequiredTask(taskType, model, accountID string, req interface
 }
 
 func normalizeVideoTaskResponse(task *TaskRecord) map[string]interface{} {
+	if task == nil {
+		return map[string]interface{}{}
+	}
+	status := normalizeTaskStatus(task.Status)
 	resp := map[string]interface{}{
-		"id":      task.ID,
-		"object":  "video.generation",
-		"created": parseUnix(task.CreatedAt),
-		"model":   task.Model,
-		"status":  task.Status,
+		"id":         task.ID,
+		"task_id":    task.ID,
+		"object":     "video.generation.task",
+		"created":    parseUnix(task.CreatedAt),
+		"updated":    parseUnix(task.UpdatedAt),
+		"model":      task.Model,
+		"provider":   "QIANWEN-WEB-01",
+		"status":     status,
+		"poll_url":   "/v1/video/generations/" + task.ID,
+		"account_id": task.ProviderAccountID,
+	}
+	if providerModel := taskProviderModel(task); providerModel != "" {
+		resp["provider_model"] = providerModel
+	}
+	if req := taskRequestMap(task); req != nil {
+		if v, ok := req["duration"]; ok {
+			resp["duration"] = v
+		}
+		if v, ok := req["ratio"]; ok {
+			resp["ratio"] = v
+		} else if v, ok := req["aspect_ratio"]; ok {
+			resp["ratio"] = v
+		}
 	}
 	if task.ResultJSON != "" {
-		var result interface{}
+		var result map[string]interface{}
 		if json.Unmarshal([]byte(task.ResultJSON), &result) == nil {
-			resp["data"] = result
+			if data, ok := result["data"]; ok {
+				resp["data"] = data
+				resp["output"] = data
+				resp["result"] = map[string]interface{}{"data": data}
+				if firstURL := firstVideoURL(data); firstURL != "" {
+					resp["url"] = firstURL
+					resp["video_url"] = firstURL
+				}
+			} else {
+				resp["data"] = result
+			}
 		}
 	}
 	if task.ErrorCode != "" || task.ErrorMessage != "" {
@@ -284,6 +428,139 @@ func normalizeVideoTaskResponse(task *TaskRecord) map[string]interface{} {
 		}
 	}
 	return resp
+}
+
+func normalizeVideoRequest(req *VideoGenerationRequest) {
+	if req.Duration == 0 {
+		switch {
+		case req.DurationSeconds > 0:
+			req.Duration = req.DurationSeconds
+		case req.Seconds > 0:
+			req.Duration = req.Seconds
+		default:
+			req.Duration = 10
+		}
+	}
+	if req.AspectRatio == "" {
+		if req.Ratio != "" {
+			req.AspectRatio = req.Ratio
+		} else if req.Size != "" {
+			req.AspectRatio = req.Size
+		}
+	}
+	if strings.Contains(req.AspectRatio, "x") {
+		req.AspectRatio = strings.ReplaceAll(req.AspectRatio, "x", ":")
+	}
+	if req.AspectRatio == "" {
+		req.AspectRatio = "16:9"
+	}
+	req.Ratio = req.AspectRatio
+	if req.Resolution == "" {
+		req.Resolution = "720P"
+	}
+	if req.FirstFrameImage == "" {
+		if req.ImageURL != "" {
+			req.FirstFrameImage = req.ImageURL
+		} else if req.Image != "" {
+			req.FirstFrameImage = req.Image
+		} else if req.FileID != "" {
+			req.FirstFrameImage = req.FileID
+		}
+	}
+}
+
+func wantsSyncVideo(req VideoGenerationRequest) bool {
+	if req.Async != nil && !*req.Async {
+		return true
+	}
+	return req.Wait || req.Sync || req.Blocking
+}
+
+func videoCandidateAccounts(req VideoGenerationRequest) ([]AccountRecord, error) {
+	if strings.TrimSpace(req.AccountID) != "" {
+		account, err := AppStore.GetAccount(strings.TrimSpace(req.AccountID))
+		if err != nil {
+			return nil, err
+		}
+		if !account.Enabled || !accountSupportsCapability(*account, "video") {
+			return nil, sql.ErrNoRows
+		}
+		return []AccountRecord{*account}, nil
+	}
+	accounts, err := AppStore.ListRunnableAccountsForCapability("video")
+	if err != nil {
+		return nil, err
+	}
+	if len(accounts) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	return accounts, nil
+}
+
+func normalizeTaskStatus(status string) string {
+	switch status {
+	case "processing", "running":
+		return "running"
+	case "succeeded", "completed":
+		return "completed"
+	case "cancelled", "canceled":
+		return "cancelled"
+	case "failed":
+		return "failed"
+	default:
+		return "queued"
+	}
+}
+
+func taskRequestMap(task *TaskRecord) map[string]interface{} {
+	if task == nil || strings.TrimSpace(task.RequestJSON) == "" {
+		return nil
+	}
+	var req map[string]interface{}
+	if json.Unmarshal([]byte(task.RequestJSON), &req) != nil {
+		return nil
+	}
+	return req
+}
+
+func taskProviderModel(task *TaskRecord) string {
+	req := taskRequestMap(task)
+	if req == nil {
+		return ""
+	}
+	for _, key := range []string{"provider_model", "upstream_model", "video_model"} {
+		if value, ok := req[key].(string); ok && strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	if value, ok := req["model"].(string); ok {
+		return value
+	}
+	return ""
+}
+
+func firstVideoURL(data interface{}) string {
+	items, ok := data.([]interface{})
+	if !ok || len(items) == 0 {
+		return ""
+	}
+	first, ok := items[0].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	for _, key := range []string{"video_url", "url"} {
+		if value, ok := first[key].(string); ok && value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func freshOrOriginal(fresh, original *TaskRecord) *TaskRecord {
+	if fresh != nil {
+		return fresh
+	}
+	return original
 }
 
 func limitURLs(urls []string, n int) []string {
