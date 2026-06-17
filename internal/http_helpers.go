@@ -46,12 +46,34 @@ func requireBearer(w http.ResponseWriter, r *http.Request, key string) bool {
 	if token == key {
 		return true
 	}
-	writeAPIError(w, http.StatusUnauthorized, "unauthorized", "Missing or invalid bearer token.")
+	writeAPIError(w, http.StatusUnauthorized, "unauthorized", "缺少或错误的 Bearer Token。")
 	return false
 }
 
 func requireAPIAuth(w http.ResponseWriter, r *http.Request) bool {
-	return requireBearer(w, r, Cfg.AuthKey)
+	keys := []string{strings.TrimSpace(Cfg.AuthKey), strings.TrimSpace(os.Getenv("AUTH_KEY")), strings.TrimSpace(Cfg.AdminKey), strings.TrimSpace(os.Getenv("ADMIN_KEY"))}
+	hasKey := false
+	for _, key := range keys {
+		if key != "" {
+			hasKey = true
+			break
+		}
+	}
+	if !hasKey {
+		return true
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+	if token == "" {
+		writeAPIError(w, http.StatusUnauthorized, "unauthorized", "缺少或错误的 Bearer Token。")
+		return false
+	}
+	for _, key := range keys {
+		if key != "" && token == key {
+			return true
+		}
+	}
+	writeAPIError(w, http.StatusUnauthorized, "unauthorized", "缺少或错误的 Bearer Token。")
+	return false
 }
 
 func requireAdminAuth(w http.ResponseWriter, r *http.Request) bool {
@@ -87,7 +109,7 @@ func requireAdminAuth(w http.ResponseWriter, r *http.Request) bool {
 			}
 		}
 	}
-	writeAPIError(w, http.StatusUnauthorized, "admin_unauthorized", "Missing or invalid admin key.")
+	writeAPIError(w, http.StatusUnauthorized, "admin_unauthorized", "缺少或错误的后台管理密钥。")
 	return false
 }
 

@@ -41,6 +41,8 @@ func HandleAdminAPI(w http.ResponseWriter, r *http.Request) {
 		handleListTasks(w, r)
 	case strings.HasPrefix(path, "/tasks/") && r.Method == http.MethodGet:
 		handleGetTask(w, r, strings.TrimPrefix(path, "/tasks/"))
+	case path == "/logs" && r.Method == http.MethodGet:
+		writeJSON(w, http.StatusOK, ListRequestLogs())
 	case path == "/models" && r.Method == http.MethodGet:
 		models, err := AppStore.ListModels()
 		if err != nil {
@@ -49,7 +51,7 @@ func HandleAdminAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{"data": models})
 	default:
-		writeAPIError(w, http.StatusNotFound, "admin_route_not_found", "Admin API route not found.")
+		writeAPIError(w, http.StatusNotFound, "admin_route_not_found", "管理接口不存在。")
 	}
 }
 
@@ -110,7 +112,7 @@ func handleCreateAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
-		writeAPIError(w, http.StatusBadRequest, "account_name_required", "Account name is required before generating a QR login session.")
+		writeAPIError(w, http.StatusBadRequest, "account_name_required", "生成扫码登录会话前，请先填写账号名称。")
 		return
 	}
 	session, err := QianwenLoginSessions.Start(name)
@@ -127,7 +129,7 @@ func handleCreateAccount(w http.ResponseWriter, r *http.Request) {
 func handleAccountAction(w http.ResponseWriter, r *http.Request, suffix string) {
 	parts := strings.Split(strings.Trim(suffix, "/"), "/")
 	if len(parts) == 0 || parts[0] == "" {
-		writeAPIError(w, http.StatusNotFound, "account_route_not_found", "Account route not found.")
+		writeAPIError(w, http.StatusNotFound, "account_route_not_found", "账号接口不存在。")
 		return
 	}
 	id := parts[0]
@@ -142,7 +144,7 @@ func handleAccountAction(w http.ResponseWriter, r *http.Request, suffix string) 
 			writeJSON(w, http.StatusOK, map[string]interface{}{"data": maskAccount(*account)})
 		case http.MethodDelete:
 			if id == "default" || id == "guest" {
-				writeAPIError(w, http.StatusBadRequest, "account_delete_protected", "Protected account cannot be deleted.")
+				writeAPIError(w, http.StatusBadRequest, "account_delete_protected", "内置账号不能删除。")
 				return
 			}
 			result, err := AppStore.DeleteAccount(id)
@@ -182,7 +184,7 @@ func handleAccountAction(w http.ResponseWriter, r *http.Request, suffix string) 
 		return
 	}
 	if len(parts) == 3 && parts[1] == "quota" && parts[2] == "sync" && r.Method == http.MethodPost {
-		msg := "Quota sync requires qianwen.com logged-in quota endpoint capture. No quota was changed."
+		msg := "额度同步还需要补齐 qianwen.com 登录态额度接口捕获逻辑，本次没有修改额度。"
 		_ = AppStore.UpdateAccountStatus(id, "unknown", msg, false)
 		writeJSON(w, http.StatusFailedDependency, map[string]interface{}{
 			"ok":      false,
@@ -191,7 +193,7 @@ func handleAccountAction(w http.ResponseWriter, r *http.Request, suffix string) 
 		})
 		return
 	}
-	writeAPIError(w, http.StatusNotFound, "account_route_not_found", "Account route not found.")
+	writeAPIError(w, http.StatusNotFound, "account_route_not_found", "账号接口不存在。")
 }
 
 func handleListTasks(w http.ResponseWriter, r *http.Request) {

@@ -37,7 +37,7 @@ func TestAccount(accountID, capability string) (*AccountTestResult, error) {
 	if account.Type == "guest" {
 		if capability != "chat" {
 			result.Status = "invalid"
-			result.Message = "Guest accounts only support the current chat adapter."
+			result.Message = "游客池账号目前只支持对话适配器。"
 			_ = AppStore.UpdateAccountStatus(accountID, "invalid", result.Message, false)
 			return result, nil
 		}
@@ -50,7 +50,7 @@ func TestAccount(accountID, capability string) (*AccountTestResult, error) {
 		}
 		result.OK = true
 		result.Status = "valid"
-		result.Message = "Guest chat probe returned a non-empty assistant response."
+		result.Message = "游客池对话测活已拿到非空模型回复。"
 		result.ResponseText = text
 		_ = AppStore.UpdateAccountStatus(accountID, "valid", "", true)
 		return result, nil
@@ -58,7 +58,7 @@ func TestAccount(accountID, capability string) (*AccountTestResult, error) {
 
 	if strings.TrimSpace(account.CookieJSON) == "" && strings.TrimSpace(account.CookieString) == "" {
 		result.Status = "invalid"
-		result.Message = "Login account has no cookie material. Paste qianwen.com Cookie JSON or request Cookie header first."
+		result.Message = "登录账号缺少 Cookie 材料，请先通过扫码登录捕获 qianwen.com 登录态。"
 		_ = AppStore.UpdateAccountStatus(accountID, "invalid", result.Message, false)
 		return result, nil
 	}
@@ -75,7 +75,7 @@ func TestAccount(accountID, capability string) (*AccountTestResult, error) {
 	text, _, err := client.chat(ctx, &ChatRequest{
 		Model: Cfg.DefaultChatModel,
 		Messages: []Message{
-			{Role: "user", Content: "Say only: ok"},
+			{Role: "user", Content: "请只回复：ok"},
 		},
 	})
 	if err != nil {
@@ -86,7 +86,7 @@ func TestAccount(accountID, capability string) (*AccountTestResult, error) {
 	}
 	result.OK = true
 	result.Status = "valid"
-	result.Message = "Login account returned a non-empty assistant response from qianwen.com."
+	result.Message = "登录账号已从 qianwen.com 拿到非空模型回复。"
 	result.ResponseText = text
 	_ = AppStore.UpdateAccountStatus(accountID, "valid", "", true)
 	return result, nil
@@ -94,11 +94,11 @@ func TestAccount(accountID, capability string) (*AccountTestResult, error) {
 
 func runGuestChatProbe() (string, error) {
 	if GlobalPool == nil {
-		return "", fmt.Errorf("guest pool is disabled")
+		return "", fmt.Errorf("游客池未启用")
 	}
 	account, err := GlobalPool.AcquireAccount()
 	if err != nil {
-		return "", fmt.Errorf("no guest account available: %w", err)
+		return "", fmt.Errorf("没有可用的游客池账号：%w", err)
 	}
 	defer GlobalPool.ReleaseAccount(account)
 
@@ -153,7 +153,7 @@ func runGuestChatProbe() (string, error) {
 		return "", err
 	}
 	if strings.TrimSpace(fullContent) == "" {
-		return "", fmt.Errorf("guest probe returned empty assistant content")
+		return "", fmt.Errorf("游客池测活返回了空回复")
 	}
 	return fullContent, nil
 }

@@ -23,6 +23,7 @@ type ImageGenerationRequest struct {
 	Seed           interface{} `json:"seed"`
 	NegativePrompt string      `json:"negative_prompt"`
 	ReferenceImage string      `json:"reference_image"`
+	AccountID      string      `json:"account_id"`
 }
 
 type VideoGenerationRequest struct {
@@ -74,7 +75,7 @@ func HandleImageGenerations(w http.ResponseWriter, r *http.Request) {
 		req.N = 1
 	}
 
-	account, err := AppStore.SelectRunnableAccountForCapability("image")
+	account, err := imageCandidateAccount(req)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			writeAPIError(w, http.StatusFailedDependency, "no_image_account", "No image-capable qianwen.com login account is available. Add an account in Admin first.")
@@ -121,6 +122,20 @@ func HandleImageGenerations(w http.ResponseWriter, r *http.Request) {
 		"created": time.Now().Unix(),
 		"data":    data,
 	})
+}
+
+func imageCandidateAccount(req ImageGenerationRequest) (*AccountRecord, error) {
+	if strings.TrimSpace(req.AccountID) != "" {
+		account, err := AppStore.GetAccount(strings.TrimSpace(req.AccountID))
+		if err != nil {
+			return nil, err
+		}
+		if !account.Enabled || !accountSupportsCapability(*account, "image") {
+			return nil, fmt.Errorf("selected account is not enabled for image")
+		}
+		return account, nil
+	}
+	return AppStore.SelectRunnableAccountForCapability("image")
 }
 
 func HandleVideoGenerations(w http.ResponseWriter, r *http.Request) {

@@ -5,7 +5,7 @@ const adminHTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>QIANWEN-WEB-01 Account Pool</title>
+<title>QIANWEN-WEB-01 账号池</title>
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <style>
 :root{
@@ -15,8 +15,6 @@ const adminHTML = `<!DOCTYPE html>
   font-family:Inter,"Segoe UI","Microsoft YaHei",Arial,sans-serif;
   --bg:#020409;
   --panel:#08111b;
-  --panel-2:#0d1825;
-  --panel-3:#060d16;
   --line:#182638;
   --line-strong:#294057;
   --text:#f4f8ff;
@@ -47,12 +45,12 @@ body{
   margin:0;
   min-width:320px;
   min-height:100vh;
+  color:var(--text);
   background:
     linear-gradient(90deg,rgba(144,189,255,.018) 1px,transparent 1px),
     linear-gradient(rgba(144,189,255,.014) 1px,transparent 1px),
     linear-gradient(135deg,#010208 0%,#040813 48%,#080815 100%);
   background-size:34px 34px,34px 34px,auto;
-  color:var(--text);
 }
 button,input,select,textarea{font:inherit;letter-spacing:0}
 button{cursor:pointer}
@@ -76,7 +74,7 @@ button{cursor:pointer}
   box-shadow:var(--glow);
   border:1px solid rgba(54,231,255,.24);
 }
-.brand-title{font-size:20px;font-weight:900;letter-spacing:0}
+.brand-title{font-size:20px;font-weight:900}
 .brand-sub,.muted,.metric-label,.eyebrow{color:var(--muted);font-size:12px}
 .nav{display:grid;gap:8px}
 .nav button{
@@ -102,7 +100,7 @@ h1{font-size:28px;line-height:1.12}
 h2{font-size:18px}
 h3{font-size:15px}
 .subline{margin-top:8px;color:var(--muted);font-size:13px}
-.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.toolbar,.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .tab-panel{animation:tabReveal 360ms var(--ease)}
 @keyframes tabReveal{from{opacity:0;transform:translateY(10px) scale(.995)}to{opacity:1;transform:none}}
 .grid{display:grid;gap:16px}
@@ -150,14 +148,10 @@ h3{font-size:15px}
 .badge.valid,.badge.succeeded,.badge.captured,.badge.login_detected{background:rgba(63,229,154,.14);color:var(--green)}
 .badge.hot,.badge.qianwen_qr{background:rgba(54,231,255,.12);color:var(--cyan)}
 .badge.invalid,.badge.failed,.badge.capture_failed,.badge.expired,.badge.error{background:rgba(255,102,117,.14);color:var(--red)}
-.badge.unknown,.badge.starting,.badge.opening,.badge.waiting_scan,.badge.disabled{background:rgba(255,209,102,.13);color:var(--amber)}
+.badge.unknown,.badge.starting,.badge.opening,.badge.waiting_scan,.badge.disabled,.badge.processing,.badge.queued{background:rgba(255,209,102,.13);color:var(--amber)}
 .detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px}
 .detail-title{display:flex;align-items:center;gap:12px}
-.avatar{
-  width:46px;height:46px;border-radius:var(--radius-md);
-  display:grid;place-items:center;background:var(--grad);color:#00131a;font-weight:900;
-}
-.actions{display:flex;gap:8px;flex-wrap:wrap}
+.avatar{width:46px;height:46px;border-radius:var(--radius-md);display:grid;place-items:center;background:var(--grad);color:#00131a;font-weight:900}
 .btn{
   border:1px solid var(--line-strong);background:rgba(11,19,30,.94);color:var(--text);
   border-radius:var(--radius-sm);min-height:38px;padding:8px 13px;
@@ -181,7 +175,7 @@ input,select,textarea{
   outline:none;
   transition:border-color 160ms var(--ease),box-shadow 160ms var(--ease),background 160ms var(--ease);
 }
-textarea{resize:vertical;min-height:96px}
+textarea{resize:vertical;min-height:118px}
 input:focus,select:focus,textarea:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(54,231,255,.12);background:#07111d}
 .kv{display:grid;grid-template-columns:130px 1fr;gap:10px;padding:9px 0;border-bottom:1px solid rgba(41,64,87,.42);font-size:13px}
 .kv:last-child{border-bottom:0}
@@ -192,35 +186,17 @@ table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:12px 14px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
 th{color:var(--muted);font-size:12px;background:#070f19}
 tr:hover td{background:rgba(54,231,255,.025)}
-.shot{
-  width:100%;
-  min-height:360px;
-  border-radius:var(--radius-md);
-  border:1px solid var(--line-strong);
-  background:#03070c;
-  object-fit:contain;
-}
-.overlay{
-  position:fixed;inset:0;z-index:60;
-  background:rgba(2,4,9,.72);
-  backdrop-filter:blur(18px);
-  display:grid;place-items:center;
-  padding:24px;
-  animation:fadeIn 180ms var(--ease);
-}
-.modal{
-  width:min(640px,100%);
-  background:linear-gradient(180deg,rgba(12,24,38,.98),rgba(5,11,18,.98));
-  border:1px solid rgba(54,231,255,.24);
-  border-radius:var(--radius-xl);
-  box-shadow:var(--shadow),var(--glow);
-  padding:22px;
-  animation:modalUp 240ms var(--ease);
-}
+.shot{width:100%;min-height:360px;border-radius:var(--radius-md);border:1px solid var(--line-strong);background:#03070c;object-fit:contain}
+.overlay{position:fixed;inset:0;z-index:60;background:rgba(2,4,9,.72);backdrop-filter:blur(18px);display:grid;place-items:center;padding:24px;animation:fadeIn 180ms var(--ease)}
+.modal{width:min(680px,100%);background:linear-gradient(180deg,rgba(12,24,38,.98),rgba(5,11,18,.98));border:1px solid rgba(54,231,255,.24);border-radius:var(--radius-xl);box-shadow:var(--shadow),var(--glow);padding:22px;animation:modalUp 240ms var(--ease)}
+.modal.wide{width:min(980px,100%)}
 .modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes modalUp{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}
 .guide{display:grid;gap:9px;margin:14px 0;padding:14px;border:1px solid rgba(41,64,87,.72);border-radius:var(--radius-md);background:rgba(54,231,255,.055);color:var(--muted);font-size:13px}
+.scan-frame{margin-top:14px;border:1px solid var(--line-strong);border-radius:var(--radius-lg);background:#03070c;min-height:430px;display:grid;place-items:center;overflow:hidden}
+.scan-frame img{width:100%;max-height:620px;object-fit:contain;display:block}
+.scan-status{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
 .empty{padding:38px;text-align:center;color:var(--muted)}
 .split{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .hint{font-size:12px;color:var(--dim);line-height:1.6}
@@ -228,18 +204,7 @@ pre.out{max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-wor
 .loading-ribbon{position:fixed;inset:0 0 auto;z-index:80;height:3px;overflow:hidden;background:rgba(54,231,255,.08)}
 .loading-ribbon span{display:block;width:42%;height:100%;background:linear-gradient(90deg,transparent,var(--cyan),var(--blue),var(--violet),transparent);box-shadow:0 0 18px rgba(54,231,255,.62);animation:loadingSweep 1.1s var(--ease) infinite}
 @keyframes loadingSweep{from{transform:translateX(-100%)}to{transform:translateX(240%)}}
-.toast{
-  position:fixed;left:50%;bottom:24px;z-index:90;
-  transform:translateX(-50%) translateY(16px);
-  opacity:0;pointer-events:none;
-  max-width:min(720px,calc(100vw - 32px));
-  padding:12px 14px;border-radius:var(--radius-sm);
-  border:1px solid rgba(54,231,255,.28);
-  background:rgba(7,15,25,.96);
-  box-shadow:var(--shadow),var(--glow);
-  color:var(--text);
-  transition:opacity 180ms var(--ease),transform 180ms var(--ease);
-}
+.toast{position:fixed;left:50%;bottom:24px;z-index:90;transform:translateX(-50%) translateY(16px);opacity:0;pointer-events:none;max-width:min(720px,calc(100vw - 32px));padding:12px 14px;border-radius:var(--radius-sm);border:1px solid rgba(54,231,255,.28);background:rgba(7,15,25,.96);box-shadow:var(--shadow),var(--glow);color:var(--text);transition:opacity 180ms var(--ease),transform 180ms var(--ease)}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 @media (max-width:1100px){
   .shell{grid-template-columns:1fr}
@@ -266,8 +231,8 @@ pre.out{max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-wor
       <div class="brand">
         <div class="brand-mark">Q</div>
         <div>
-          <div class="brand-title">Qianwen Pool</div>
-          <div class="brand-sub">gen2api style console</div>
+          <div class="brand-title">千问账号池</div>
+          <div class="brand-sub">QIANWEN-WEB-01</div>
         </div>
       </div>
       <nav class="nav">
@@ -276,59 +241,50 @@ pre.out{max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-wor
         </button>
       </nav>
       <div class="side-foot">
-        <div class="split">
-          <span class="muted">Default chat</span>
-          <span class="badge hot">{{defaultChatModel}}</span>
-        </div>
-        <p class="hint" style="margin-top:10px">Only accounts that pass a real model test should be routed by external API requests.</p>
+        <div class="split"><span class="muted">默认对话模型</span><span class="badge hot">{{defaultChatModel}}</span></div>
+        <p class="hint" style="margin-top:10px">只有测活通过的账号才建议参与接口调度；二维码会话过期后请及时删除。</p>
       </div>
     </aside>
 
     <main class="main">
       <header class="topbar">
         <div>
-          <div class="eyebrow">QIANWEN WEB REVERSE PROXY</div>
+          <div class="eyebrow">千问网页反代</div>
           <h1>{{title}}</h1>
-          <p class="subline">QR login account pool, SQLite storage, chat/image/video routing, no Redis.</p>
+          <p class="subline">扫码登录账号池、SQLite 存储、对话 / 生图 / 生视频接口测试与请求日志。</p>
         </div>
         <div class="toolbar">
-          <button class="btn" @click="refreshAll">Refresh</button>
-          <button class="btn primary" @click="openAdd">Add account</button>
+          <button class="btn" @click="refreshAll">刷新</button>
+          <button class="btn primary" @click="openAdd">新增账号</button>
         </div>
       </header>
 
       <section v-show="tab==='accounts'" class="tab-panel">
         <div class="grid stats">
-          <div class="card metric"><div class="metric-label">Accounts</div><div class="metric-value">{{accounts.length}}</div><div class="metric-meta">SQLite account pool</div></div>
-          <div class="card metric"><div class="metric-label">Valid</div><div class="metric-value">{{validCount}}</div><div class="metric-meta">Passed real chat probe</div></div>
-          <div class="card metric"><div class="metric-label">QR sessions</div><div class="metric-value">{{sessions.length}}</div><div class="metric-meta">{{activeSessionCount}} active</div></div>
-          <div class="card metric"><div class="metric-label">Tasks</div><div class="metric-value">{{tasks.length}}</div><div class="metric-meta">{{taskBreakdown}}</div></div>
+          <div class="card metric"><div class="metric-label">账号总数</div><div class="metric-value">{{accounts.length}}</div><div class="metric-meta">SQLite 本地账号池</div></div>
+          <div class="card metric"><div class="metric-label">有效账号</div><div class="metric-value">{{validCount}}</div><div class="metric-meta">真实模型测活通过</div></div>
+          <div class="card metric"><div class="metric-label">扫码会话</div><div class="metric-value">{{sessions.length}}</div><div class="metric-meta">{{activeSessionCount}} 个仍在等待</div></div>
+          <div class="card metric"><div class="metric-label">任务记录</div><div class="metric-value">{{tasks.length}}</div><div class="metric-meta">{{taskBreakdown}}</div></div>
         </div>
 
         <div class="grid two">
           <div class="card">
-            <div class="split" style="margin-bottom:14px">
-              <h2>Account pool</h2>
-              <button class="btn ghost" @click="loadAccounts">Sync state</button>
-            </div>
+            <div class="split" style="margin-bottom:14px"><h2>账号池</h2><button class="btn ghost" @click="loadAccounts">同步状态</button></div>
             <div class="account-list">
               <div v-for="account in accounts" :key="account.id" :class="['account-card',{active:selectedId===account.id}]" @click="selectAccount(account.id)">
                 <div class="account-head">
-                  <div>
-                    <div class="account-name">{{account.name}}</div>
-                    <div class="account-id">{{account.id}}</div>
-                  </div>
-                  <span :class="['badge',statusClass(account.status)]">{{account.status || 'unknown'}}</span>
+                  <div><div class="account-name">{{account.name}}</div><div class="account-id">{{account.id}}</div></div>
+                  <span :class="['badge',statusClass(account.status)]">{{statusText(account.status)}}</span>
                 </div>
                 <div class="badges">
-                  <span v-if="account.enabled" class="badge valid">enabled</span>
-                  <span v-else class="badge disabled">disabled</span>
-                  <span :class="['badge',account.type]">{{account.type}}</span>
-                  <span v-for="cap in capabilityList(account)" :key="cap" class="badge hot">{{cap}}</span>
+                  <span v-if="account.enabled" class="badge valid">启用</span>
+                  <span v-else class="badge disabled">禁用</span>
+                  <span :class="['badge',account.type]">{{typeText(account.type)}}</span>
+                  <span v-for="cap in capabilityList(account)" :key="cap" class="badge hot">{{capText(cap)}}</span>
                 </div>
-                <div class="hint mono">{{account.last_error || account.cookie_string || 'Waiting for QR login capture'}}</div>
+                <div class="hint mono">{{account.last_error || account.cookie_string || '等待扫码捕获账号'}}</div>
               </div>
-              <div v-if="!accounts.length" class="empty">No accounts yet. Click Add account to start QR login.</div>
+              <div v-if="!accounts.length" class="empty">暂无账号，点击“新增账号”开始扫码登录。</div>
             </div>
           </div>
 
@@ -336,107 +292,134 @@ pre.out{max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-wor
             <div class="detail-head">
               <div class="detail-title">
                 <div class="avatar">{{initial(selectedAccount.name)}}</div>
-                <div>
-                  <h2>{{selectedAccount.name}}</h2>
-                  <div class="account-id">{{selectedAccount.id}}</div>
-                </div>
+                <div><h2>{{selectedAccount.name}}</h2><div class="account-id">{{selectedAccount.id}}</div></div>
               </div>
-              <span :class="['badge',statusClass(selectedAccount.status)]">{{selectedAccount.status || 'unknown'}}</span>
+              <span :class="['badge',statusClass(selectedAccount.status)]">{{statusText(selectedAccount.status)}}</span>
             </div>
             <div class="actions" style="margin-bottom:16px">
-              <button class="btn primary" @click="testAccount(selectedAccount.id)" :disabled="accountProbe.loading">Test</button>
-              <button class="btn" @click="syncQuota(selectedAccount.id)" :disabled="accountProbe.loading">Sync quota</button>
-              <button class="btn danger" @click="deleteAccount(selectedAccount.id)">Delete account</button>
+              <button class="btn primary" @click="testAccount(selectedAccount.id)" :disabled="accountProbe.loading">测活</button>
+              <button class="btn" @click="syncQuota(selectedAccount.id)" :disabled="accountProbe.loading">同步额度</button>
+              <button class="btn" @click="openLatestSessionModal">查看扫码会话</button>
+              <button class="btn danger" v-if="!isProtectedAccount(selectedAccount.id)" @click="deleteAccount(selectedAccount.id)">删除账号</button>
             </div>
             <div class="grid" style="gap:0">
-              <div class="kv"><span>Type</span><strong>{{selectedAccount.type}}</strong></div>
-              <div class="kv"><span>Capabilities</span><span class="mono">{{formatCaps(selectedAccount.capabilities_json)}}</span></div>
-              <div class="kv"><span>Last test</span><span>{{selectedAccount.last_test_at || '-'}}</span></div>
-              <div class="kv"><span>Last success</span><span>{{selectedAccount.last_success_at || '-'}}</span></div>
-              <div class="kv"><span>Last quota sync</span><span>{{selectedAccount.last_quota_sync_at || '-'}}</span></div>
-              <div class="kv"><span>Error</span><span>{{selectedAccount.last_error || '-'}}</span></div>
+              <div class="kv"><span>账号类型</span><strong>{{typeText(selectedAccount.type)}}</strong></div>
+              <div class="kv"><span>能力</span><span class="mono">{{formatCaps(selectedAccount.capabilities_json)}}</span></div>
+              <div class="kv"><span>最后测活</span><span>{{selectedAccount.last_test_at || '-'}}</span></div>
+              <div class="kv"><span>最后成功</span><span>{{selectedAccount.last_success_at || '-'}}</span></div>
+              <div class="kv"><span>额度同步</span><span>{{selectedAccount.last_quota_sync_at || '-'}}</span></div>
+              <div class="kv"><span>错误信息</span><span>{{selectedAccount.last_error || '-'}}</span></div>
             </div>
             <div v-if="accountProbe.message" style="margin-top:14px">
-              <span :class="['badge',statusClass(accountProbe.status)]">{{accountProbe.status}}</span>
+              <span :class="['badge',statusClass(accountProbe.status)]">{{statusText(accountProbe.status)}}</span>
               <span class="hint" style="margin-left:8px">{{accountProbe.message}}</span>
             </div>
           </div>
-          <div class="card" v-else>
-            <div class="empty">Select an account to view details.</div>
-          </div>
+          <div class="card" v-else><div class="empty">请选择一个账号查看详情。</div></div>
         </div>
-      </section>
 
-      <section v-show="tab==='sessions'" class="tab-panel">
-        <div class="grid two">
+        <div class="grid two" style="margin-top:16px">
           <div class="card">
-            <div class="split" style="margin-bottom:14px">
-              <h2>QR login sessions</h2>
-              <button class="btn ghost" @click="loadSessions">Refresh sessions</button>
-            </div>
+            <div class="split" style="margin-bottom:14px"><h2>扫码会话</h2><button class="btn ghost" @click="loadSessions">刷新会话</button></div>
             <div class="account-list">
               <div v-for="session in sessions" :key="session.id" :class="['account-card',{active:selectedSessionId===session.id}]" @click="selectSession(session.id)">
                 <div class="account-head">
-                  <div>
-                    <div class="account-name">{{session.name}}</div>
-                    <div class="account-id">{{session.id}}</div>
-                  </div>
-                  <span :class="['badge',statusClass(session.status)]">{{session.status}}</span>
+                  <div><div class="account-name">{{session.name}}</div><div class="account-id">{{session.id}}</div></div>
+                  <span :class="['badge',statusClass(session.status)]">{{statusText(session.status)}}</span>
                 </div>
                 <div class="badges">
-                  <span class="badge hot">cookies {{session.cookie_count || 0}}</span>
-                  <span v-if="session.account_id" class="badge valid">captured</span>
+                  <span class="badge hot">Cookie {{session.cookie_count || 0}}</span>
+                  <span v-if="session.account_id" class="badge valid">已捕获</span>
                 </div>
                 <div class="hint mono">{{session.message || '-'}}</div>
               </div>
-              <div v-if="!sessions.length" class="empty">No QR sessions. Add an account to create one.</div>
+              <div v-if="!sessions.length" class="empty">暂无扫码会话。新增账号后会自动生成。</div>
             </div>
           </div>
           <div class="card" v-if="selectedSession">
             <div class="detail-head">
               <div class="detail-title">
                 <div class="avatar">QR</div>
-                <div>
-                  <h2>{{selectedSession.name}}</h2>
-                  <div class="account-id">{{selectedSession.id}}</div>
-                </div>
+                <div><h2>{{selectedSession.name}}</h2><div class="account-id">{{selectedSession.id}}</div></div>
               </div>
-              <span :class="['badge',statusClass(selectedSession.status)]">{{selectedSession.status}}</span>
+              <span :class="['badge',statusClass(selectedSession.status)]">{{statusText(selectedSession.status)}}</span>
             </div>
             <div class="actions" style="margin-bottom:16px">
-              <button class="btn" @click="clickLoginEntry(selectedSession.id)">Click login entry</button>
-              <button class="btn" @click="refreshSession(selectedSession.id)">Refresh QR</button>
-              <button class="btn primary" @click="captureSession(selectedSession.id)">Confirm scan</button>
-              <button class="btn danger" @click="deleteSession(selectedSession.id)">Delete session</button>
+              <button class="btn" @click="clickLoginEntry(selectedSession.id)">点击登录入口</button>
+              <button class="btn" @click="openSessionModal(selectedSession.id)">打开扫码窗口</button>
+              <button class="btn" @click="refreshSession(selectedSession.id)">刷新二维码</button>
+              <button class="btn primary" @click="captureSession(selectedSession.id)">确认扫码</button>
+              <button class="btn danger" @click="deleteSession(selectedSession.id)">删除会话</button>
             </div>
-            <img class="shot" :src="screenshotUrl(selectedSession.id)" alt="Qianwen login screenshot">
+            <img class="shot" :src="screenshotUrl(selectedSession.id)" alt="千问登录截图">
             <div class="grid" style="gap:0;margin-top:14px">
-              <div class="kv"><span>Message</span><span>{{selectedSession.message || '-'}}</span></div>
-              <div class="kv"><span>Account</span><span class="mono">{{selectedSession.account_id || '-'}}</span></div>
-              <div class="kv"><span>Updated</span><span>{{selectedSession.updated_at || '-'}}</span></div>
+              <div class="kv"><span>提示</span><span>{{selectedSession.message || '-'}}</span></div>
+              <div class="kv"><span>账号</span><span class="mono">{{selectedSession.account_id || '-'}}</span></div>
+              <div class="kv"><span>更新时间</span><span>{{selectedSession.updated_at || '-'}}</span></div>
             </div>
           </div>
-          <div class="card" v-else>
-            <div class="empty">Select a QR session to view the live screenshot.</div>
-          </div>
+          <div class="card" v-else><div class="empty">请选择一个扫码会话查看截图。</div></div>
         </div>
       </section>
 
-      <section v-show="tab==='tasks'" class="tab-panel">
+      <section v-show="tab==='test'" class="tab-panel">
+        <div class="card">
+          <div class="form-grid">
+            <label>账号
+              <select v-model="test.account_id">
+                <option value="">自动调度</option>
+                <option v-for="a in accounts" :key="a.id" :value="a.id">{{a.name}} / {{a.id}}</option>
+              </select>
+            </label>
+            <label>模型
+              <select v-model="test.model">
+                <option v-for="m in models" :key="m.id" :value="m.id">{{m.id}}</option>
+              </select>
+            </label>
+          </div>
+          <div class="form-grid" style="margin-top:12px">
+            <label>视频秒数
+              <select v-model.number="test.duration">
+                <option :value="5">5 秒</option>
+                <option :value="10">10 秒</option>
+              </select>
+            </label>
+            <label>画面比例
+              <select v-model="test.ratio">
+                <option value="16:9">16:9</option>
+                <option value="9:16">9:16</option>
+                <option value="1:1">1:1</option>
+              </select>
+            </label>
+          </div>
+          <label style="margin-top:12px">提示词
+            <textarea v-model="test.prompt" placeholder="输入要发送到千问的测试内容"></textarea>
+          </label>
+          <div class="actions" style="margin-top:14px">
+            <button class="btn primary" :disabled="test.loading" @click="runTest">{{test.loading ? '请求中' : '发送测试'}}</button>
+            <button class="btn" @click="copy(test.output)">复制结果</button>
+            <span class="badge hot">{{modelKind(test.model)}}</span>
+          </div>
+          <pre v-if="test.output" class="out" style="margin-top:14px">{{test.output}}</pre>
+          <div v-if="test.error" class="card" style="margin-top:14px;border-color:rgba(255,102,117,.35);color:var(--red)">{{test.error}}</div>
+        </div>
+      </section>
+
+      <section v-show="tab==='logs'" class="tab-panel">
         <div class="table-wrap">
           <table>
-            <thead><tr><th>ID</th><th>Type</th><th>Model</th><th>Status</th><th>Account</th><th>Error</th><th>Created</th></tr></thead>
+            <thead><tr><th>时间</th><th>方法</th><th>路径</th><th>模型</th><th>账号</th><th>状态</th><th>耗时</th></tr></thead>
             <tbody>
-              <tr v-for="task in tasks" :key="task.id">
-                <td class="mono">{{task.id}}</td>
-                <td>{{task.type}}</td>
-                <td>{{task.model || '-'}}</td>
-                <td><span :class="['badge',statusClass(task.status)]">{{task.status}}</span></td>
-                <td class="mono">{{task.provider_account_id || '-'}}</td>
-                <td>{{task.error_message || '-'}}</td>
-                <td>{{task.created_at || '-'}}</td>
+              <tr v-for="log in logs" :key="String(log.ts)+log.path+String(log.ms)">
+                <td class="mono">{{fmtClock(log.ts)}}</td>
+                <td><span class="badge hot">{{log.method}}</span></td>
+                <td class="mono">{{log.path}}</td>
+                <td>{{log.model || '-'}}</td>
+                <td class="mono">{{log.account_id || '-'}}</td>
+                <td :style="{color:log.status < 400 ? 'var(--green)' : 'var(--red)'}">{{log.status}}</td>
+                <td>{{log.ms}}ms</td>
               </tr>
-              <tr v-if="!tasks.length"><td colspan="7" class="empty">No tasks recorded yet.</td></tr>
+              <tr v-if="!logs.length"><td colspan="7" class="empty">暂无请求日志。使用“接口测试”发送一次请求后会出现记录。</td></tr>
             </tbody>
           </table>
         </div>
@@ -445,22 +428,20 @@ pre.out{max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-wor
       <section v-show="tab==='system'" class="tab-panel">
         <div class="grid two">
           <div class="card">
-            <h2 style="margin-bottom:12px">Runtime</h2>
-            <div class="kv"><span>Service</span><span>{{summary.service.name || 'QIANWEN-WEB-01'}}</span></div>
-            <div class="kv"><span>Listen</span><span class="mono">{{summary.service.host || '0.0.0.0'}}:{{summary.service.port || '-'}}</span></div>
-            <div class="kv"><span>Data dir</span><span class="mono">{{summary.service.data_dir || '-'}}</span></div>
+            <h2 style="margin-bottom:12px">运行信息</h2>
+            <div class="kv"><span>服务</span><span>{{summary.service.name || 'QIANWEN-WEB-01'}}</span></div>
+            <div class="kv"><span>监听地址</span><span class="mono">{{summary.service.host || '0.0.0.0'}}:{{summary.service.port || '-'}}</span></div>
+            <div class="kv"><span>数据目录</span><span class="mono">{{summary.service.data_dir || '-'}}</span></div>
             <div class="kv"><span>SQLite</span><span class="mono">{{summary.service.database_path || '-'}}</span></div>
-            <div class="kv"><span>Public URL</span><span class="mono">{{summary.service.public_base_url || locationOrigin}}</span></div>
-            <div class="kv"><span>Guest pool</span><span>{{summary.service.guest_pool_size}}</span></div>
+            <div class="kv"><span>公开地址</span><span class="mono">{{summary.service.public_base_url || locationOrigin}}</span></div>
+            <div class="kv"><span>游客池</span><span>{{summary.service.guest_pool_size}}</span></div>
           </div>
           <div class="card">
-            <h2 style="margin-bottom:12px">Models</h2>
-            <div class="badges">
-              <span v-for="model in models" :key="model.id" class="badge hot">{{model.id}}</span>
-            </div>
-            <h2 style="margin:18px 0 12px">Admin key</h2>
-            <p class="hint">The key from the URL is saved into localStorage so refreshes keep the same authenticated console.</p>
-            <pre class="out" style="margin-top:12px">{{adminKey ? 'stored in localStorage:qianwenAdminKey' : 'missing key'}}</pre>
+            <h2 style="margin-bottom:12px">模型</h2>
+            <div class="badges"><span v-for="model in models" :key="model.id" class="badge hot">{{model.id}}</span></div>
+            <h2 style="margin:18px 0 12px">本地登录保持</h2>
+            <p class="hint">URL 中的 key 已写入浏览器本地存储，刷新后台无需重复登录。</p>
+            <pre class="out" style="margin-top:12px">{{adminKey ? '已保存到浏览器本地存储：qianwenAdminKey' : '未检测到 key'}}</pre>
           </div>
         </div>
       </section>
@@ -471,25 +452,61 @@ pre.out{max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-wor
     <div class="modal">
       <div class="modal-head">
         <div>
-          <h2>Add Qianwen account</h2>
-          <p class="subline">Create a server-side Chromium QR login session, then capture the logged-in qianwen.com account into SQLite.</p>
+          <h2>新增千问账号</h2>
+          <p class="subline">创建服务端 Chromium 扫码会话，扫码后捕获 qianwen.com 登录态并写入 SQLite 账号池。</p>
         </div>
-        <button class="btn ghost" @click="closeAdd">Close</button>
+        <button class="btn ghost" @click="closeAdd">关闭</button>
       </div>
       <div class="guide">
-        <div>1. Enter a readable account name.</div>
-        <div>2. The server opens Chromium and loads qianwen.com.</div>
-        <div>3. Scan the QR or complete the page login flow shown in the screenshot.</div>
-        <div>4. Click Confirm scan only after the screenshot shows a logged-in page.</div>
-        <div>5. Run Test; real model output is required before the account should receive traffic.</div>
+        <div>1. 填写一个容易识别的账号名称。</div>
+        <div>2. 点击生成二维码，服务器会打开独立 Chromium profile。</div>
+        <div>3. 在下方截图中完成扫码或登录流程。</div>
+        <div>4. 页面进入已登录状态后，点击“确认扫码”。</div>
+        <div>5. 保存后点击“测活”，拿到真实模型返回才建议参与调度。</div>
       </div>
-      <label>Account name
-        <input v-model.trim="newAccount.name" placeholder="Example: qianwen-main-01" @keyup.enter="createAccount">
+      <label>账号名称
+        <input v-model.trim="newAccount.name" placeholder="例如：千问主号 01" @keyup.enter="createAccount">
       </label>
       <div class="actions" style="margin-top:16px">
-        <button class="btn ghost" @click="closeAdd">Cancel</button>
-        <button class="btn primary" @click="createAccount" :disabled="!newAccount.name">Generate QR</button>
+        <button class="btn ghost" @click="closeAdd">取消</button>
+        <button class="btn primary" @click="createAccount" :disabled="!newAccount.name">生成二维码</button>
       </div>
+    </div>
+  </div>
+
+  <div v-if="scanModal" class="overlay" @click.self="closeScanModal">
+    <div class="modal wide" v-if="selectedSession">
+      <div class="modal-head">
+        <div>
+          <h2>扫码登录</h2>
+          <p class="subline">{{selectedSession.name}} / {{selectedSession.id}}</p>
+        </div>
+        <button class="btn ghost" @click="closeScanModal">关闭</button>
+      </div>
+      <div class="guide">
+        <div>1. 在截图中确认已经进入千问登录页；如果二维码过期，点击“刷新二维码”。</div>
+        <div>2. 使用千问 / 淘宝 / 支付宝支持的方式完成扫码或授权登录。</div>
+        <div>3. 截图显示已经进入已登录页面后，再点击“确认扫码”。</div>
+        <div>4. 捕获成功后账号会写入 SQLite，随后请对账号执行“测活”。</div>
+      </div>
+      <div class="scan-frame">
+        <img :src="screenshotUrl(selectedSession.id)" alt="千问登录截图">
+      </div>
+      <div class="scan-status">
+        <span :class="['badge',statusClass(selectedSession.status)]">{{statusText(selectedSession.status)}}</span>
+        <span class="badge hot">Cookie {{selectedSession.cookie_count || 0}}</span>
+        <span v-if="selectedSession.account_id" class="badge valid">已捕获 {{selectedSession.account_id}}</span>
+        <span class="hint">{{selectedSession.message || '等待扫码'}}</span>
+      </div>
+      <div class="actions" style="margin-top:16px">
+        <button class="btn" @click="clickLoginEntry(selectedSession.id)">点击登录入口</button>
+        <button class="btn" @click="refreshSession(selectedSession.id)">刷新二维码</button>
+        <button class="btn primary" @click="captureSession(selectedSession.id)">确认扫码</button>
+        <button class="btn danger" @click="deleteSession(selectedSession.id)">删除会话</button>
+      </div>
+    </div>
+    <div class="modal" v-else>
+      <div class="empty">当前没有可查看的扫码会话。</div>
     </div>
   </div>
 
@@ -505,10 +522,10 @@ createApp({
     const adminKey=initialKey;
     const locationOrigin=window.location.origin;
     const tabs=[
-      {key:"accounts",name:"Accounts",icon:"A"},
-      {key:"sessions",name:"QR sessions",icon:"Q"},
-      {key:"tasks",name:"Tasks",icon:"T"},
-      {key:"system",name:"System",icon:"S"}
+      {key:"accounts",name:"账号池",icon:"◎"},
+      {key:"test",name:"接口测试",icon:"↯"},
+      {key:"logs",name:"请求日志",icon:"≡"},
+      {key:"system",name:"系统",icon:"⚙"}
     ];
     const tab=ref("accounts");
     const busy=ref(false);
@@ -516,306 +533,160 @@ createApp({
     const sessions=ref([]);
     const tasks=ref([]);
     const models=ref([]);
+    const logs=ref([]);
     const selectedId=ref("");
     const selectedSessionId=ref("");
     const screenshotTick=ref(0);
     const addModal=ref(false);
+    const scanModal=ref(false);
     const newAccount=reactive({name:""});
     const accountProbe=reactive({loading:false,status:"",message:""});
+    const test=reactive({account_id:"",model:"tongyi-qwen3-max-model",prompt:"你好，请只回复一句话确认你可用。",duration:5,ratio:"16:9",output:"",error:"",loading:false});
     const toast=reactive({show:false,text:"",timer:0});
     const summary=reactive({service:{},accounts:{},tasks:{}});
     let pollTimer=0;
 
-    const title=computed(function(){
-      const found=tabs.find(function(item){return item.key===tab.value});
-      return found ? found.name : "Accounts";
-    });
-    const selectedAccount=computed(function(){
-      return accounts.value.find(function(account){return account.id===selectedId.value}) || null;
-    });
-    const selectedSession=computed(function(){
-      return sessions.value.find(function(session){return session.id===selectedSessionId.value}) || null;
-    });
-    const validCount=computed(function(){
-      return accounts.value.filter(function(account){return account.status==="valid"}).length;
-    });
-    const activeSessionCount=computed(function(){
-      return sessions.value.filter(function(session){
-        return ["captured","failed","expired"].indexOf(session.status)===-1;
-      }).length;
-    });
-    const taskBreakdown=computed(function(){
-      return breakdown(summary.tasks && summary.tasks.status);
-    });
-    const defaultChatModel=computed(function(){
-      const chat=models.value.find(function(model){return model.type==="chat" && model.is_default});
-      return chat ? chat.id : "tongyi-qwen3-max-model";
-    });
+    const title=computed(function(){const found=tabs.find(function(item){return item.key===tab.value});return found ? found.name : "账号池";});
+    const selectedAccount=computed(function(){return accounts.value.find(function(account){return account.id===selectedId.value}) || null;});
+    const selectedSession=computed(function(){return sessions.value.find(function(session){return session.id===selectedSessionId.value}) || null;});
+    const validCount=computed(function(){return accounts.value.filter(function(account){return account.status==="valid"}).length;});
+    const activeSessionCount=computed(function(){return sessions.value.filter(function(session){return ["captured","failed","expired"].indexOf(session.status)===-1;}).length;});
+    const taskBreakdown=computed(function(){return breakdown(summary.tasks && summary.tasks.status);});
+    const defaultChatModel=computed(function(){const chat=models.value.find(function(model){return model.type==="chat" && model.is_default});return chat ? chat.id : "tongyi-qwen3-max-model";});
 
-    function headers(json){
-      const h={};
-      if(adminKey) h["X-Admin-Key"]=adminKey;
-      if(json!==false) h["Content-Type"]="application/json";
-      return h;
-    }
+    function adminHeaders(json){const h={};if(adminKey) h["X-Admin-Key"]=adminKey;if(json!==false) h["Content-Type"]="application/json";return h;}
+    function apiHeaders(json){const h={};if(adminKey) h["Authorization"]="Bearer "+adminKey;if(json!==false) h["Content-Type"]="application/json";return h;}
     async function api(path,opts){
       const options=opts || {};
       busy.value=true;
       try{
-        const resp=await fetch("/api"+path,Object.assign({},options,{headers:Object.assign(headers(!(options.body instanceof FormData)),options.headers || {})}));
+        const resp=await fetch("/api"+path,Object.assign({},options,{headers:Object.assign(adminHeaders(!(options.body instanceof FormData)),options.headers || {})}));
         const text=await resp.text();
         let data={};
-        try{data=text ? JSON.parse(text) : {}}catch(err){data={message:text}}
-        if(!resp.ok){
-          throw new Error(errorMessage(data) || resp.statusText || ("HTTP "+resp.status));
-        }
+        try{data=text ? JSON.parse(text) : {}}catch(err){data={message:text};}
+        if(!resp.ok){throw new Error(errorMessage(data) || resp.statusText || ("HTTP "+resp.status));}
         return data;
-      }finally{
-        busy.value=false;
-      }
+      }finally{busy.value=false;}
     }
-    function errorMessage(data){
-      if(!data) return "";
-      if(data.error && data.error.message) return data.error.message;
-      return data.message || data.detail || "";
+    async function callProvider(path,body){
+      const resp=await fetch(path,{method:"POST",headers:apiHeaders(true),body:JSON.stringify(body)});
+      const text=await resp.text();
+      let data={};
+      try{data=text ? JSON.parse(text) : {}}catch(err){data={message:text};}
+      if(!resp.ok){throw new Error(errorMessage(data) || text || resp.statusText);}
+      return data;
     }
-    function showToast(text){
-      toast.text=text || "";
-      toast.show=true;
-      if(toast.timer) clearTimeout(toast.timer);
-      toast.timer=setTimeout(function(){toast.show=false},3200);
-    }
-    async function refreshAll(){
-      await Promise.all([loadSummary(),loadAccounts(),loadSessions(),loadTasks(),loadModels()]);
-    }
-    async function loadSummary(){
-      try{
-        const data=await api("/admin/summary");
-        Object.assign(summary.service,data.service || {});
-        summary.accounts=data.accounts || {};
-        summary.tasks=data.tasks || {};
-      }catch(err){
-        showToast(err.message);
-      }
-    }
-    async function loadAccounts(){
-      const data=await api("/accounts");
-      accounts.value=data.data || [];
-      if(!selectedId.value && accounts.value.length) selectedId.value=accounts.value[0].id;
-      if(selectedId.value && !accounts.value.some(function(account){return account.id===selectedId.value})){
-        selectedId.value=accounts.value[0] ? accounts.value[0].id : "";
-      }
-    }
-    async function loadSessions(){
-      const data=await api("/login-sessions");
-      sessions.value=data.data || [];
-      if(!selectedSessionId.value && sessions.value.length) selectedSessionId.value=sessions.value[0].id;
-      if(selectedSessionId.value && !sessions.value.some(function(session){return session.id===selectedSessionId.value})){
-        selectedSessionId.value=sessions.value[0] ? sessions.value[0].id : "";
-      }
-      screenshotTick.value++;
-    }
-    async function loadTasks(){
-      const data=await api("/tasks?limit=80");
-      tasks.value=data.data || [];
-    }
-    async function loadModels(){
-      const data=await api("/models");
-      models.value=data.data || [];
-    }
-    function selectAccount(id){
-      selectedId.value=id;
-      accountProbe.status="";
-      accountProbe.message="";
-    }
-    function selectSession(id){
-      selectedSessionId.value=id;
-      tab.value="sessions";
-      screenshotTick.value++;
-    }
-    function openAdd(){
-      newAccount.name="";
-      addModal.value=true;
-      setTimeout(function(){
-        const input=document.querySelector(".modal input");
-        if(input) input.focus();
-      },80);
-    }
-    function closeAdd(){
-      addModal.value=false;
-      newAccount.name="";
-    }
+    function errorMessage(data){if(!data) return "";if(data.error && data.error.message) return data.error.message;return data.message || data.detail || "";}
+    function showToast(text){toast.text=text || "";toast.show=true;if(toast.timer) clearTimeout(toast.timer);toast.timer=setTimeout(function(){toast.show=false;},3200);}
+    async function refreshAll(){await Promise.all([loadSummary(),loadAccounts(),loadSessions(),loadTasks(),loadModels(),loadLogs()]);}
+    async function loadSummary(){try{const data=await api("/admin/summary");Object.assign(summary.service,data.service || {});summary.accounts=data.accounts || {};summary.tasks=data.tasks || {};}catch(err){showToast(err.message);}}
+    async function loadAccounts(){const data=await api("/accounts");accounts.value=data.data || [];if(!selectedId.value && accounts.value.length) selectedId.value=accounts.value[0].id;if(selectedId.value && !accounts.value.some(function(account){return account.id===selectedId.value;})){selectedId.value=accounts.value[0] ? accounts.value[0].id : "";}}
+    async function loadSessions(){const data=await api("/login-sessions");sessions.value=data.data || [];if(!selectedSessionId.value && sessions.value.length) selectedSessionId.value=sessions.value[0].id;if(selectedSessionId.value && !sessions.value.some(function(session){return session.id===selectedSessionId.value;})){selectedSessionId.value=sessions.value[0] ? sessions.value[0].id : "";}screenshotTick.value++;}
+    async function loadTasks(){const data=await api("/tasks?limit=80");tasks.value=data.data || [];}
+    async function loadModels(){const data=await api("/models");models.value=data.data || [];if(!models.value.some(function(model){return model.id===test.model;}) && models.value.length){test.model=models.value[0].id;}}
+    async function loadLogs(){try{const data=await api("/logs");logs.value=(Array.isArray(data) ? data : []).slice().reverse();}catch(err){}}
+    function selectAccount(id){selectedId.value=id;accountProbe.status="";accountProbe.message="";}
+    function selectSession(id){selectedSessionId.value=id;screenshotTick.value++;}
+    function openSessionModal(id){if(id){selectedSessionId.value=id;}screenshotTick.value++;scanModal.value=true;}
+    function closeScanModal(){scanModal.value=false;}
+    function openLatestSessionModal(){if(sessions.value.length){openSessionModal(sessions.value[0].id);showToast("已打开最新扫码会话。");}else{showToast("暂无扫码会话，请先新增账号。");}}
+    function openAdd(){newAccount.name="";addModal.value=true;setTimeout(function(){const input=document.querySelector(".modal input");if(input) input.focus();},80);}
+    function closeAdd(){addModal.value=false;newAccount.name="";}
     async function createAccount(){
       const name=(newAccount.name || "").trim();
-      if(!name){
-        showToast("Enter an account name first.");
-        return;
-      }
+      if(!name){showToast("请先填写账号名称。");return;}
       try{
         const data=await api("/accounts",{method:"POST",body:JSON.stringify({name:name})});
         closeAdd();
         await refreshAll();
-        if(data.data && data.data.id){
-          selectedSessionId.value=data.data.id;
-          tab.value="sessions";
-          screenshotTick.value++;
-        }
-        showToast("QR login session created.");
-      }catch(err){
-        showToast(err.message);
-      }
+        if(data.data && data.data.id){openSessionModal(data.data.id);}
+        showToast("扫码会话已创建，请在弹窗中完成扫码。");
+      }catch(err){showToast(err.message);}
     }
     async function testAccount(id){
-      accountProbe.loading=true;
-      accountProbe.status="";
-      accountProbe.message="";
+      accountProbe.loading=true;accountProbe.status="";accountProbe.message="";
       try{
         const result=await api("/accounts/"+encodeURIComponent(id)+"/test",{method:"POST",body:JSON.stringify({capability:"chat"})});
         accountProbe.status=result.ok ? "valid" : "invalid";
-        accountProbe.message=result.message || "Account test completed.";
+        accountProbe.message=result.message || "账号测活完成。";
         showToast(accountProbe.message);
-      }catch(err){
-        accountProbe.status="error";
-        accountProbe.message=err.message;
-        showToast(err.message);
-      }finally{
-        accountProbe.loading=false;
-        await refreshAll();
-      }
+      }catch(err){accountProbe.status="error";accountProbe.message=err.message;showToast(err.message);}
+      finally{accountProbe.loading=false;await refreshAll();}
     }
     async function syncQuota(id){
-      accountProbe.loading=true;
-      accountProbe.status="";
-      accountProbe.message="";
+      accountProbe.loading=true;accountProbe.status="";accountProbe.message="";
       try{
         const data=await api("/accounts/"+encodeURIComponent(id)+"/quota/sync",{method:"POST"});
         accountProbe.status=data.ok ? "valid" : "unknown";
-        accountProbe.message=data.message || "Quota sync completed.";
+        accountProbe.message=data.message || "额度同步完成。";
         showToast(accountProbe.message);
-      }catch(err){
-        accountProbe.status="error";
-        accountProbe.message=err.message;
-        showToast(err.message);
-      }finally{
-        accountProbe.loading=false;
-        await refreshAll();
-      }
+      }catch(err){accountProbe.status="error";accountProbe.message=err.message;showToast(err.message);}
+      finally{accountProbe.loading=false;await refreshAll();}
     }
     async function deleteAccount(id){
-      const account=accounts.value.find(function(item){return item.id===id});
+      const account=accounts.value.find(function(item){return item.id===id;});
       const label=account ? account.name+" / "+account.id : id;
-      const ok=window.confirm("Delete account "+label+"?\n\nThis will remove the SQLite account row, account events, detach historical task ownership, and close captured QR sessions for this account.\n\nThis action cannot be undone.");
+      const ok=window.confirm("确认删除账号 "+label+"？\n\n这会删除 SQLite 账号记录、账号事件，解绑历史任务归属，并关闭该账号关联的扫码会话。\n\n该操作不可恢复。");
       if(!ok) return;
       try{
         const result=await api("/accounts/"+encodeURIComponent(id),{method:"DELETE"});
         selectedId.value="";
         await refreshAll();
         const data=result.data || {};
-        showToast("Account deleted. events="+(data.account_events_deleted || 0)+", tasks_detached="+(data.tasks_detached || 0)+".");
-      }catch(err){
-        showToast(err.message);
-      }
+        showToast("账号已删除，事件 "+(data.account_events_deleted || 0)+" 条，解绑任务 "+(data.tasks_detached || 0)+" 条。");
+      }catch(err){showToast(err.message);}
     }
-    async function clickLoginEntry(id){
-      try{
-        await api("/login-sessions/"+encodeURIComponent(id)+"/click-login",{method:"POST"});
-        screenshotTick.value++;
-        await loadSessions();
-        showToast("Clicked login entry.");
-      }catch(err){
-        showToast(err.message);
-      }
-    }
-    async function refreshSession(id){
-      try{
-        await api("/login-sessions/"+encodeURIComponent(id)+"/refresh",{method:"POST"});
-        screenshotTick.value++;
-        await loadSessions();
-        showToast("QR session refreshed.");
-      }catch(err){
-        showToast(err.message);
-      }
-    }
+    async function clickLoginEntry(id){try{await api("/login-sessions/"+encodeURIComponent(id)+"/click-login",{method:"POST"});screenshotTick.value++;await loadSessions();showToast("已点击登录入口。");}catch(err){showToast(err.message);}}
+    async function refreshSession(id){try{await api("/login-sessions/"+encodeURIComponent(id)+"/refresh",{method:"POST"});screenshotTick.value++;await loadSessions();showToast("二维码会话已刷新。");}catch(err){showToast(err.message);}}
     async function captureSession(id){
       try{
         const result=await api("/login-sessions/"+encodeURIComponent(id)+"/capture",{method:"POST"});
         await refreshAll();
-        if(result.data && result.data.id){
-          selectedId.value=result.data.id;
-          tab.value="accounts";
-        }
-        showToast("Account captured. Run Test before routing traffic.");
-      }catch(err){
-        showToast(err.message);
-      }
+        if(result.data && result.data.id){selectedId.value=result.data.id;}
+        scanModal.value=false;
+        showToast("账号已捕获，请继续测活。");
+      }catch(err){showToast(err.message);}
     }
     async function deleteSession(id){
-      const session=sessions.value.find(function(item){return item.id===id});
+      const session=sessions.value.find(function(item){return item.id===id;});
       const label=session ? session.name+" / "+session.id : id;
-      const ok=window.confirm("Delete QR session "+label+"?\n\nThis closes the Chromium process and removes its temporary browser profile. Expired QR sessions should be deleted to avoid memory buildup.");
+      const ok=window.confirm("确认删除扫码会话 "+label+"？\n\n这会关闭 Chromium 进程并删除临时浏览器 profile。");
       if(!ok) return;
+      try{await api("/login-sessions/"+encodeURIComponent(id),{method:"DELETE"});if(selectedSessionId.value===id){selectedSessionId.value="";scanModal.value=false;}await loadSessions();showToast("扫码会话已删除。");}catch(err){showToast(err.message);}
+    }
+    async function runTest(){
+      test.loading=true;test.output="";test.error="";
       try{
-        await api("/login-sessions/"+encodeURIComponent(id),{method:"DELETE"});
-        if(selectedSessionId.value===id) selectedSessionId.value="";
-        await loadSessions();
-        showToast("QR session deleted.");
-      }catch(err){
-        showToast(err.message);
-      }
-    }
-    function screenshotUrl(id){
-      screenshotTick.value;
-      return "/api/login-sessions/"+encodeURIComponent(id)+"/screenshot?key="+encodeURIComponent(adminKey)+"&t="+Date.now()+"-"+screenshotTick.value;
-    }
-    function capabilityList(account){
-      try{
-        const caps=JSON.parse(account.capabilities_json || "{}");
-        return Object.keys(caps).filter(function(key){return !!caps[key]});
-      }catch(err){
-        return [];
-      }
-    }
-    function formatCaps(value){
-      try{
-        const caps=JSON.parse(value || "{}");
-        const keys=Object.keys(caps).filter(function(key){return !!caps[key]});
-        return keys.length ? keys.join(" / ") : "{}";
-      }catch(err){
-        return value || "-";
-      }
-    }
-    function statusClass(value){
-      const v=value || "unknown";
-      if(["valid","succeeded","captured","login_detected"].indexOf(v)>=0) return v;
-      if(["invalid","failed","capture_failed","expired","error"].indexOf(v)>=0) return v;
-      return v;
-    }
-    function breakdown(obj){
-      const keys=Object.keys(obj || {});
-      if(!keys.length) return "none";
-      return keys.map(function(key){return key+":"+obj[key]}).join(" / ");
-    }
-    function initial(name){
-      return String(name || "Q").slice(0,1).toUpperCase();
-    }
-    onMounted(function(){
-      refreshAll();
-      pollTimer=setInterval(function(){
-        if(tab.value==="sessions"){
-          loadSessions().catch(function(){});
+        const kind=modelKind(test.model);
+        let data;
+        if(kind==="生图"){
+          data=await callProvider("/v1/images/generations",{model:test.model,prompt:test.prompt,account_id:test.account_id || undefined,n:1});
+        }else if(kind==="生视频"){
+          data=await callProvider("/v1/videos",{model:test.model,prompt:test.prompt,account_id:test.account_id || undefined,duration:test.duration,ratio:test.ratio,wait:false});
+        }else{
+          data=await callProvider("/v1/chat/completions",{model:test.model,account_id:test.account_id || undefined,messages:[{role:"user",content:test.prompt}],stream:false});
         }
-      },5000);
-    });
-    onBeforeUnmount(function(){
-      if(pollTimer) clearInterval(pollTimer);
-      if(toast.timer) clearTimeout(toast.timer);
-    });
-    return{
-      tabs,tab,title,busy,accounts,sessions,tasks,models,summary,selectedId,selectedSessionId,selectedAccount,selectedSession,
-      validCount,activeSessionCount,taskBreakdown,defaultChatModel,addModal,newAccount,accountProbe,toast,adminKey,locationOrigin,
-      refreshAll,loadAccounts,loadSessions,selectAccount,selectSession,openAdd,closeAdd,createAccount,testAccount,syncQuota,deleteAccount,
-      clickLoginEntry,refreshSession,captureSession,deleteSession,screenshotUrl,capabilityList,formatCaps,statusClass,initial
-    };
+        test.output=JSON.stringify(data,null,2);
+        await Promise.all([loadAccounts(),loadTasks(),loadLogs()]);
+      }catch(err){test.error=err.message;await loadLogs();}
+      finally{test.loading=false;}
+    }
+    async function copy(text){if(!text)return;try{await navigator.clipboard.writeText(text);showToast("已复制到剪切板。");}catch(err){const ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();showToast("已复制到剪切板。");}}
+    function screenshotUrl(id){screenshotTick.value;return "/api/login-sessions/"+encodeURIComponent(id)+"/screenshot?key="+encodeURIComponent(adminKey)+"&t="+Date.now()+"-"+screenshotTick.value;}
+    function capabilityList(account){try{const caps=JSON.parse(account.capabilities_json || "{}");return Object.keys(caps).filter(function(key){return !!caps[key];});}catch(err){return [];}}
+    function formatCaps(value){try{const caps=JSON.parse(value || "{}");const keys=Object.keys(caps).filter(function(key){return !!caps[key];});return keys.length ? keys.map(capText).join(" / ") : "{}";}catch(err){return value || "-";}}
+    function modelKind(modelID){const found=models.value.find(function(model){return model.id===modelID;});if(found && found.type==="image") return "生图";if(found && found.type==="video") return "生视频";const lower=String(modelID || "").toLowerCase();if(lower.indexOf("image")>=0) return "生图";if(lower.indexOf("happyhorse")>=0 || lower.indexOf("video")>=0) return "生视频";return "对话";}
+    function statusClass(value){const v=value || "unknown";if(["valid","succeeded","captured","login_detected"].indexOf(v)>=0) return v;if(["invalid","failed","capture_failed","expired","error"].indexOf(v)>=0) return v;return v;}
+    function statusText(value){const map={valid:"可用",unknown:"未知",invalid:"无效",succeeded:"成功",failed:"失败",captured:"已捕获",login_detected:"检测到登录",capture_failed:"捕获失败",expired:"已过期",starting:"启动中",opening:"打开中",waiting_scan:"等待扫码",processing:"处理中",queued:"排队中"};return map[value] || value || "未知";}
+    function typeText(value){const map={qianwen_qr:"扫码登录",login_cookie:"扫码捕获",guest:"游客池"};return map[value] || value || "未知";}
+    function capText(value){const map={chat:"对话",image:"生图",video:"生视频"};return map[value] || value;}
+    function breakdown(obj){const keys=Object.keys(obj || {});if(!keys.length) return "暂无";return keys.map(function(key){return key+":"+obj[key];}).join(" / ");}
+    function initial(name){return String(name || "Q").slice(0,1).toUpperCase();}
+    function isProtectedAccount(id){return id==="default" || id==="guest";}
+    function fmtClock(ts){return ts ? new Date(ts*1000).toLocaleTimeString("zh-CN",{hour12:false}) : "-";}
+    onMounted(function(){refreshAll();pollTimer=setInterval(function(){if(tab.value==="logs"){loadLogs().catch(function(){});} if(tab.value==="accounts" || scanModal.value){loadSessions().catch(function(){});}},5000);});
+    onBeforeUnmount(function(){if(pollTimer) clearInterval(pollTimer);if(toast.timer) clearTimeout(toast.timer);});
+    return{tabs,tab,title,busy,accounts,sessions,tasks,models,logs,summary,selectedId,selectedSessionId,selectedAccount,selectedSession,validCount,activeSessionCount,taskBreakdown,defaultChatModel,addModal,scanModal,newAccount,accountProbe,test,toast,adminKey,locationOrigin,refreshAll,loadAccounts,loadSessions,selectAccount,selectSession,openSessionModal,closeScanModal,openLatestSessionModal,openAdd,closeAdd,createAccount,testAccount,syncQuota,deleteAccount,clickLoginEntry,refreshSession,captureSession,deleteSession,runTest,copy,screenshotUrl,capabilityList,formatCaps,modelKind,statusClass,statusText,typeText,capText,initial,isProtectedAccount,fmtClock};
   }
 }).mount("#app");
 </script>

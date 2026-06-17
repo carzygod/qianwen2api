@@ -29,6 +29,19 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if AppStore != nil {
+		if req.AccountID != "" {
+			loginAccount, err := AppStore.GetAccount(strings.TrimSpace(req.AccountID))
+			if err != nil {
+				writeAccountLookupError(w, err)
+				return
+			}
+			if !loginAccount.Enabled || !accountSupportsCapability(*loginAccount, "chat") {
+				writeAPIError(w, http.StatusFailedDependency, "login_account_unavailable", "Selected account is not enabled for chat.")
+				return
+			}
+			handleLoginChatRequest(w, r, &req, loginAccount)
+			return
+		}
 		if loginAccount, err := AppStore.SelectRunnableAccountForCapability("chat"); err == nil {
 			handleLoginChatRequest(w, r, &req, loginAccount)
 			return

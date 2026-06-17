@@ -19,6 +19,7 @@ This project does not use official Qwen API keys. It captures logged-in qianwen.
 | Storage | SQLite |
 | Redis | Not used |
 | Admin WebUI | `/admin?key=<ADMIN_KEY>` |
+| Admin workflow | Doubao-style Chinese account pool with add-account modal, QR scan modal, account test, test bench, and request logs |
 | Account import | QR login with server-side Chromium |
 | QR lifecycle | Create, refresh, confirm, delete; delete closes Chromium |
 | Account pool | Multiple qianwen.com Web accounts |
@@ -63,13 +64,13 @@ Open `http://127.0.0.1:18002/admin?key=change-me-admin-key`.
 
 ### Add Accounts
 
-1. Click `Add account`.
+1. Click `新增账号`.
 2. Enter a readable account name.
-3. Click `Generate QR`.
+3. Click `生成二维码`.
 4. Scan the QR code shown in the live screenshot.
 5. Wait until qianwen.com is logged in.
-6. Click `Confirm scan`.
-7. Run account `Test`; only accounts with real model output should receive traffic.
+6. Click `确认扫码`.
+7. Run account `测活`; only accounts with real model output should receive traffic.
 
 ### API Example
 
@@ -103,6 +104,7 @@ QIANWEN-WEB-01 是 gen2api 使用的 qianwen.com / 通义千问 Web 反代维护
 | 存储 | SQLite |
 | Redis | 不使用 |
 | Admin WebUI | `/admin?key=<ADMIN_KEY>` |
+| 后台交互 | 对齐豆包风格的中文账号池：新增账号、扫码弹窗、测活、接口测试、请求日志 |
 | 账号导入 | 服务端 Chromium 二维码扫码登录 |
 | 二维码生命周期 | 创建、刷新、确认、删除；删除会关闭 Chromium |
 | 账号池 | 多个 qianwen.com Web 登录账号 |
@@ -146,13 +148,13 @@ docker run -d --name qianwen-web-01 \
 
 ### 新增账号
 
-1. 点击 `Add account`。
+1. 点击 `新增账号`。
 2. 填写账号名称。
-3. 点击 `Generate QR`。
+3. 点击 `生成二维码`。
 4. 扫描实时截图中的二维码。
 5. 等待页面进入 qianwen.com 登录后状态。
-6. 点击 `Confirm scan` 保存账号。
-7. 点击账号 `Test`，只有真实模型请求返回成功的账号才进入可用路由。
+6. 点击 `确认扫码` 保存账号。
+7. 点击账号 `测活`，只有真实模型请求返回成功的账号才进入可用路由。
 
 ### 调用示例
 
@@ -186,6 +188,7 @@ QIANWEN-WEB-01 — поддерживаемый Web reverse-proxy для qianwen
 | Storage | SQLite |
 | Redis | Не используется |
 | Admin WebUI | `/admin?key=<ADMIN_KEY>` |
+| Admin workflow | Doubao-style Chinese UI: account pool, QR modal, account test, API test bench, request logs |
 | Account import | QR login через server-side Chromium |
 | QR lifecycle | create, refresh, confirm, delete; delete закрывает Chromium |
 | Account pool | Несколько qianwen.com Web аккаунтов |
@@ -230,13 +233,13 @@ docker run -d --name qianwen-web-01 \
 
 ### Добавление аккаунтов
 
-1. Нажмите `Add account`.
+1. Нажмите `新增账号`.
 2. Введите понятное имя аккаунта.
-3. Нажмите `Generate QR`.
+3. Нажмите `生成二维码`.
 4. Отсканируйте QR на live screenshot.
 5. Дождитесь входа в qianwen.com.
-6. Нажмите `Confirm scan`.
-7. Запустите `Test`; только аккаунты с реальным ответом модели должны получать трафик.
+6. Нажмите `确认扫码`.
+7. Запустите `测活`; только аккаунты с реальным ответом модели должны получать трафик.
 
 ### Пример API
 

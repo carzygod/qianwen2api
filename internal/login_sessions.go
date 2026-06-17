@@ -80,7 +80,7 @@ func (m *LoginSessionManager) Start(name string) (*LoginSessionView, error) {
 		ID:          id,
 		Name:        name,
 		Status:      "starting",
-		Message:     "Starting qianwen.com login browser.",
+		Message:     "正在启动 qianwen.com 登录浏览器。",
 		CreatedAt:   nowISO(),
 		UpdatedAt:   nowISO(),
 		userDataDir: filepath.Join(Cfg.DataDir, "login-sessions", id),
@@ -253,7 +253,7 @@ func (s *LoginSession) Restart() error {
 
 	s.mu.Lock()
 	s.Status = "refreshing"
-	s.Message = "Refreshing QR login session. A new Chromium profile is being created."
+	s.Message = "正在刷新扫码登录会话，并创建新的 Chromium profile。"
 	s.CookieCount = 0
 	s.AccountID = ""
 	s.screenshot = nil
@@ -266,7 +266,7 @@ func (s *LoginSession) Restart() error {
 
 func (s *LoginSession) run() {
 	if err := os.MkdirAll(s.userDataDir, 0700); err != nil {
-		s.setStatus("failed", "Failed to create login profile directory: "+err.Error())
+		s.setStatus("failed", "创建登录 profile 目录失败："+err.Error())
 		return
 	}
 
@@ -300,7 +300,7 @@ func (s *LoginSession) run() {
 	s.cancel = cancel
 	s.mu.Unlock()
 
-	s.setStatus("opening", "Opening qianwen.com. If a QR code appears, scan it with the qianwen/Taobao/Alipay login flow shown on the page.")
+	s.setStatus("opening", "正在打开 qianwen.com。如果页面出现二维码，请按页面提示使用千问 / 淘宝 / 支付宝完成登录。")
 	if err := chromedp.Run(ctx,
 		network.Enable(),
 		chromedp.Navigate("https://www.qianwen.com/"),
@@ -309,7 +309,7 @@ func (s *LoginSession) run() {
 		if ctx.Err() != nil {
 			return
 		}
-		s.setStatus("failed", "Failed to open qianwen.com: "+err.Error())
+		s.setStatus("failed", "打开 qianwen.com 失败："+err.Error())
 		return
 	}
 
@@ -325,7 +325,7 @@ func (s *LoginSession) run() {
 	if ctx.Err() != nil {
 		return
 	}
-	s.setStatus("waiting_scan", "Scan the QR code in the screenshot, then click Capture Login in Admin after the page changes to a logged-in state.")
+	s.setStatus("waiting_scan", "请在截图中扫码登录；页面进入已登录状态后，点击“确认扫码”。")
 
 	ticker := time.NewTicker(6 * time.Second)
 	expire := time.NewTimer(10 * time.Minute)
@@ -343,7 +343,7 @@ func (s *LoginSession) run() {
 			alreadyCaptured := s.AccountID != ""
 			if s.Status != "captured" && likelyLogin {
 				s.Status = "login_detected"
-				s.Message = "Browser cookies detected after QR scan. Capturing account material automatically."
+				s.Message = "已检测到登录 Cookie，正在自动捕获账号材料。"
 			}
 			if s.Status != "captured" && !alreadyCaptured {
 				s.UpdatedAt = nowISO()
@@ -351,11 +351,11 @@ func (s *LoginSession) run() {
 			s.mu.Unlock()
 			if count > 0 && !alreadyCaptured && likelyLogin {
 				if _, err := s.CaptureAccount(); err != nil {
-					s.setStatus("capture_failed", "Detected cookies, but failed to capture account: "+err.Error())
+					s.setStatus("capture_failed", "已检测到 Cookie，但捕获账号失败："+err.Error())
 				}
 			}
 		case <-expire.C:
-			s.setStatus("expired", "Login session expired. Start a new QR login session.")
+			s.setStatus("expired", "登录会话已过期，请重新生成扫码会话。")
 			s.releaseBrowser()
 			return
 		case <-ctx.Done():
@@ -416,7 +416,7 @@ func (s *LoginSession) TriggerLogin() error {
 	if err := s.RefreshScreenshot(); err != nil {
 		return err
 	}
-	s.setStatus("waiting_scan", "Clicked the likely qianwen.com login entry. Scan the QR code if it is visible, then capture the login state.")
+	s.setStatus("waiting_scan", "已点击可能的登录入口；如果看到二维码，请扫码后再确认捕获登录态。")
 	return nil
 }
 
@@ -483,7 +483,7 @@ func (s *LoginSession) CaptureAccount() (*AccountRecord, error) {
 		LocalStorageJSON: localStorageJSON,
 		UserAgent:        userAgent,
 		CapabilitiesJSON: `{"chat":true,"image":true,"video":true}`,
-		LastError:        "QR login cookies captured from " + source + ". Real model probe is still required before this account is marked valid.",
+		LastError:        "已从 " + source + " 捕获扫码登录 Cookie。标记为可用前仍需要执行真实模型测活。",
 	}
 	if err := AppStore.CreateAccount(account); err != nil {
 		return nil, err
@@ -491,7 +491,7 @@ func (s *LoginSession) CaptureAccount() (*AccountRecord, error) {
 
 	s.mu.Lock()
 	s.Status = "captured"
-	s.Message = "Captured browser cookies from " + source + " into account pool. Run a real model test before routing traffic to this account."
+	s.Message = "已从 " + source + " 捕获浏览器 Cookie 并写入账号池。参与调度前请先执行真实模型测活。"
 	s.AccountID = account.ID
 	s.CookieCount = len(cookies)
 	s.UpdatedAt = nowISO()
@@ -519,9 +519,9 @@ func (s *LoginSession) captureLoginCookies() ([]capturedCookie, string, error) {
 	failures := make([]string, 0, 2)
 	if cookies, err := s.readCDPCookies(); err == nil {
 		if len(cookies) == 0 {
-			failures = append(failures, "cdp: no cookies")
+			failures = append(failures, "cdp: 没有读取到 Cookie")
 		} else if !hasLikelyLoginCookie(cookies) {
-			failures = append(failures, "cdp: cookies exist but do not look logged in: "+strings.Join(cookieNames(cookies), ","))
+			failures = append(failures, "cdp: 已读取到 Cookie，但不像已登录态："+strings.Join(cookieNames(cookies), ","))
 		} else {
 			return cookies, "cdp", nil
 		}
@@ -531,9 +531,9 @@ func (s *LoginSession) captureLoginCookies() ([]capturedCookie, string, error) {
 
 	if cookies, err := s.readProfileCookies(); err == nil {
 		if len(cookies) == 0 {
-			failures = append(failures, "profile: no cookies")
+			failures = append(failures, "profile: 没有读取到 Cookie")
 		} else if !hasLikelyLoginCookie(cookies) {
-			failures = append(failures, "profile: cookies exist but do not look logged in: "+strings.Join(cookieNames(cookies), ","))
+			failures = append(failures, "profile: 已读取到 Cookie，但不像已登录态："+strings.Join(cookieNames(cookies), ","))
 		} else {
 			return cookies, "chromium profile", nil
 		}
@@ -541,7 +541,7 @@ func (s *LoginSession) captureLoginCookies() ([]capturedCookie, string, error) {
 		failures = append(failures, "profile: "+err.Error())
 	}
 
-	return nil, "", fmt.Errorf("no qianwen.com login cookies detected yet (%s)", strings.Join(failures, "; "))
+	return nil, "", fmt.Errorf("暂未检测到 qianwen.com 登录 Cookie（%s）", strings.Join(failures, "；"))
 }
 
 func (s *LoginSession) readCDPCookies() ([]capturedCookie, error) {

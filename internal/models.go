@@ -17,9 +17,10 @@ type QianwenContent struct {
 }
 
 type ChatRequest struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
-	Stream   bool      `json:"stream"`
+	Model     string    `json:"model"`
+	Messages  []Message `json:"messages"`
+	Stream    bool      `json:"stream"`
+	AccountID string    `json:"account_id,omitempty"`
 }
 
 type ChatCompletionChunk struct {
