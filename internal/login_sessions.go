@@ -163,6 +163,38 @@ func (m *LoginSessionManager) Delete(id string) bool {
 	return ok
 }
 
+func (m *LoginSessionManager) DeleteByAccountID(accountID string) []string {
+	accountID = strings.TrimSpace(accountID)
+	if accountID == "" {
+		return nil
+	}
+
+	type target struct {
+		id      string
+		session *LoginSession
+	}
+	targets := []target{}
+
+	m.mu.Lock()
+	for id, session := range m.sessions {
+		session.mu.Lock()
+		matches := session.AccountID == accountID
+		session.mu.Unlock()
+		if matches {
+			delete(m.sessions, id)
+			targets = append(targets, target{id: id, session: session})
+		}
+	}
+	m.mu.Unlock()
+
+	ids := make([]string, 0, len(targets))
+	for _, item := range targets {
+		item.session.releaseBrowser()
+		ids = append(ids, item.id)
+	}
+	return ids
+}
+
 func (s *LoginSession) view() *LoginSessionView {
 	s.mu.Lock()
 	defer s.mu.Unlock()

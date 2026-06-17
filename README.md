@@ -22,6 +22,7 @@ This project does not use official Qwen API keys. It captures logged-in qianwen.
 | Account import | QR login with server-side Chromium |
 | QR lifecycle | Create, refresh, confirm, delete; delete closes Chromium |
 | Account pool | Multiple qianwen.com Web accounts |
+| Account delete | Removes the SQLite account row, account events, detaches historical task ownership, and closes captured QR sessions |
 | Account test | Sends a real default chat request and requires model output |
 | Chat API | `/v1/chat/completions` |
 | Image API | `/v1/images/generations` |
@@ -188,6 +189,7 @@ QIANWEN-WEB-01 — поддерживаемый Web reverse-proxy для qianwen
 | Account import | QR login через server-side Chromium |
 | QR lifecycle | create, refresh, confirm, delete; delete закрывает Chromium |
 | Account pool | Несколько qianwen.com Web аккаунтов |
+| Account delete | Removes the SQLite account row, account events, detaches historical task ownership, and closes captured QR sessions |
 | Account test | Реальный default chat request с проверкой ответа модели |
 | Chat API | `/v1/chat/completions` |
 | Image API | `/v1/images/generations` |

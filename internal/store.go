@@ -45,6 +45,14 @@ type AccountRecord struct {
 	UpdatedAt        string `json:"updated_at"`
 }
 
+type AccountDeleteResult struct {
+	AccountID            string   `json:"account_id"`
+	Deleted              bool     `json:"deleted"`
+	AccountEventsDeleted int64    `json:"account_events_deleted"`
+	TasksDetached        int64    `json:"tasks_detached"`
+	LoginSessionsDeleted []string `json:"login_sessions_deleted,omitempty"`
+}
+
 type ModelRecord struct {
 	ID               string `json:"id"`
 	Type             string `json:"type"`
@@ -331,9 +339,48 @@ func (s *Store) GetAccount(id string) (*AccountRecord, error) {
 	return &a, nil
 }
 
-func (s *Store) DeleteAccount(id string) error {
-	_, err := s.db.Exec(`DELETE FROM qianwen_accounts WHERE id=?`, id)
-	return err
+func (s *Store) DeleteAccount(id string) (*AccountDeleteResult, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, errors.New("account id is required")
+	}
+	if id == "default" || id == "guest" {
+		return nil, errors.New("protected account cannot be deleted")
+	}
+	if _, err := s.GetAccount(id); err != nil {
+		if err == sql.ErrNoRows {
+			return &AccountDeleteResult{AccountID: id, Deleted: false}, nil
+		}
+		return nil, err
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	result := &AccountDeleteResult{AccountID: id}
+	if res, err := tx.Exec(`DELETE FROM qianwen_account_events WHERE account_id=?`, id); err != nil {
+		return nil, err
+	} else {
+		result.AccountEventsDeleted, _ = res.RowsAffected()
+	}
+	if res, err := tx.Exec(`UPDATE qianwen_tasks SET provider_account_id='' WHERE provider_account_id=?`, id); err != nil {
+		return nil, err
+	} else {
+		result.TasksDetached, _ = res.RowsAffected()
+	}
+	res, err := tx.Exec(`DELETE FROM qianwen_accounts WHERE id=?`, id)
+	if err != nil {
+		return nil, err
+	}
+	affected, _ := res.RowsAffected()
+	result.Deleted = affected > 0
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (s *Store) UpdateAccountStatus(id, status, lastError string, success bool) error {

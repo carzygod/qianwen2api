@@ -141,11 +141,24 @@ func handleAccountAction(w http.ResponseWriter, r *http.Request, suffix string) 
 			}
 			writeJSON(w, http.StatusOK, map[string]interface{}{"data": maskAccount(*account)})
 		case http.MethodDelete:
-			if err := AppStore.DeleteAccount(id); err != nil {
+			if id == "default" || id == "guest" {
+				writeAPIError(w, http.StatusBadRequest, "account_delete_protected", "Protected account cannot be deleted.")
+				return
+			}
+			result, err := AppStore.DeleteAccount(id)
+			if err != nil {
 				writeAPIError(w, http.StatusInternalServerError, "account_delete_failed", err.Error())
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+			if result == nil || !result.Deleted {
+				writeAPIError(w, http.StatusNotFound, "account_not_found", "Account not found.")
+				return
+			}
+			result.LoginSessionsDeleted = QianwenLoginSessions.DeleteByAccountID(id)
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"status": "deleted",
+				"data":   result,
+			})
 		default:
 			writeAPIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed.")
 		}
@@ -234,7 +247,7 @@ func maskSecret(value string) string {
 	return value[:6] + "..." + value[len(value)-4:]
 }
 
-const adminHTML = `<!doctype html>
+const legacyAdminHTML = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
