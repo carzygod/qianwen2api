@@ -8,6 +8,10 @@ import (
 	"strings"
 )
 
+type serviceAPIKeyRequest struct {
+	APIKey string `json:"api_key"`
+}
+
 func HandleAdminPage(w http.ResponseWriter, r *http.Request) {
 	if !requireAdminAuth(w, r) {
 		return
@@ -29,6 +33,8 @@ func HandleAdminAPI(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case path == "/admin/summary" && r.Method == http.MethodGet:
 		handleAdminSummary(w, r)
+	case path == "/service/api-key" && (r.Method == http.MethodGet || r.Method == http.MethodPut || r.Method == http.MethodPost):
+		handleServiceAPIKey(w, r)
 	case path == "/login-sessions" || strings.HasPrefix(path, "/login-sessions/"):
 		handleLoginSessions(w, r, path)
 	case path == "/accounts" && r.Method == http.MethodGet:
@@ -52,6 +58,42 @@ func HandleAdminAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{"data": models})
 	default:
 		writeAPIError(w, http.StatusNotFound, "admin_route_not_found", "管理接口不存在。")
+	}
+}
+
+func handleServiceAPIKey(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"provider":      "QIANWEN-WEB-01",
+			"api_key":       effectiveAPIKey(),
+			"api_base_path": "/v1",
+			"header":        "Authorization: Bearer",
+		})
+	case http.MethodPut, http.MethodPost:
+		var req serviceAPIKeyRequest
+		if err := decodeJSON(r, &req); err != nil {
+			writeAPIError(w, http.StatusBadRequest, "invalid_json", err.Error())
+			return
+		}
+		apiKey := strings.TrimSpace(req.APIKey)
+		if apiKey == "" {
+			writeAPIError(w, http.StatusBadRequest, "missing_api_key", "api_key is required")
+			return
+		}
+		if err := AppStore.SetSetting("api_key", apiKey); err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "save_api_key_failed", err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"ok":            true,
+			"provider":      "QIANWEN-WEB-01",
+			"api_key":       effectiveAPIKey(),
+			"api_base_path": "/v1",
+			"header":        "Authorization: Bearer",
+		})
+	default:
+		writeAPIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed.")
 	}
 }
 

@@ -428,20 +428,27 @@ pre.out{max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-wor
       <section v-show="tab==='system'" class="tab-panel">
         <div class="grid two">
           <div class="card">
-            <h2 style="margin-bottom:12px">运行信息</h2>
-            <div class="kv"><span>服务</span><span>{{summary.service.name || 'QIANWEN-WEB-01'}}</span></div>
-            <div class="kv"><span>监听地址</span><span class="mono">{{summary.service.host || '0.0.0.0'}}:{{summary.service.port || '-'}}</span></div>
-            <div class="kv"><span>数据目录</span><span class="mono">{{summary.service.data_dir || '-'}}</span></div>
-            <div class="kv"><span>SQLite</span><span class="mono">{{summary.service.database_path || '-'}}</span></div>
-            <div class="kv"><span>公开地址</span><span class="mono">{{summary.service.public_base_url || locationOrigin}}</span></div>
-            <div class="kv"><span>游客池</span><span>{{summary.service.guest_pool_size}}</span></div>
+            <h2 style="margin-bottom:12px">Runtime</h2>
+            <div class="kv"><span>Service</span><span>{{summary.service.name || 'QIANWEN-WEB-01'}}</span></div>
+            <div class="kv"><span>Listen</span><span class="mono">{{summary.service.host || '0.0.0.0'}}:{{summary.service.port || '-'}}</span></div>
+            <div class="kv"><span>Public URL</span><span class="mono">{{summary.service.public_base_url || locationOrigin}}</span></div>
+            <div class="kv"><span>Database</span><span class="mono">{{summary.service.database_path || '-'}}</span></div>
+            <div class="kv"><span>Data Dir</span><span class="mono">{{summary.service.data_dir || '-'}}</span></div>
           </div>
           <div class="card">
-            <h2 style="margin-bottom:12px">模型</h2>
+            <h2 style="margin-bottom:12px">API Key Manager</h2>
+            <div class="kv"><span>API Base</span><span class="mono">{{apiBase}}</span></div>
+            <label style="margin-top:12px">API Key<input v-model="serviceKey.api_key" class="mono" autocomplete="off"></label>
+            <div class="actions" style="margin-top:14px"><button class="btn" @click="copy(apiBase)">Copy API Base</button><button class="btn" @click="copy(serviceKey.api_key)">Copy API Key</button><button class="btn primary" @click="saveServiceKey">Save API Key</button></div>
+            <p class="hint" style="margin-top:12px">This key is used by NewAPI channels. Saving takes effect immediately and persists to SQLite; the environment variable is only the initial fallback.</p>
+            <span v-if="serviceKey.message" class="badge valid" style="margin-top:10px">{{serviceKey.message}}</span>
+          </div>
+          <div class="card">
+            <h2 style="margin-bottom:12px">Models</h2>
             <div class="badges"><span v-for="model in models" :key="model.id" class="badge hot">{{model.id}}</span></div>
-            <h2 style="margin:18px 0 12px">本地登录保持</h2>
-            <p class="hint">URL 中的 key 已写入浏览器本地存储，刷新后台无需重复登录。</p>
-            <pre class="out" style="margin-top:12px">{{adminKey ? '已保存到浏览器本地存储：qianwenAdminKey' : '未检测到 key'}}</pre>
+            <h2 style="margin:18px 0 12px">Admin Login Cache</h2>
+            <p class="hint">The admin key from URL is stored in browser localStorage for this WebUI only.</p>
+            <pre class="out" style="margin-top:12px">{{adminKey ? 'Saved in localStorage: qianwenAdminKey' : 'No admin key detected'}}</pre>
           </div>
         </div>
       </section>
@@ -544,6 +551,7 @@ createApp({
     const test=reactive({account_id:"",model:"tongyi-qwen3-max-model",prompt:"你好，请只回复一句话确认你可用。",duration:5,ratio:"16:9",output:"",error:"",loading:false});
     const toast=reactive({show:false,text:"",timer:0});
     const summary=reactive({service:{},accounts:{},tasks:{}});
+    const serviceKey=reactive({api_key:"",message:""});
     let pollTimer=0;
 
     const title=computed(function(){const found=tabs.find(function(item){return item.key===tab.value});return found ? found.name : "账号池";});
@@ -553,6 +561,7 @@ createApp({
     const activeSessionCount=computed(function(){return sessions.value.filter(function(session){return ["captured","failed","expired"].indexOf(session.status)===-1;}).length;});
     const taskBreakdown=computed(function(){return breakdown(summary.tasks && summary.tasks.status);});
     const defaultChatModel=computed(function(){const chat=models.value.find(function(model){return model.type==="chat" && model.is_default});return chat ? chat.id : "tongyi-qwen3-max-model";});
+    const apiBase=computed(function(){return locationOrigin+"/v1";});
 
     function adminHeaders(json){const h={};if(adminKey) h["X-Admin-Key"]=adminKey;if(json!==false) h["Content-Type"]="application/json";return h;}
     function apiHeaders(json){const h={};if(adminKey) h["Authorization"]="Bearer "+adminKey;if(json!==false) h["Content-Type"]="application/json";return h;}
@@ -578,13 +587,15 @@ createApp({
     }
     function errorMessage(data){if(!data) return "";if(data.error && data.error.message) return data.error.message;return data.message || data.detail || "";}
     function showToast(text){toast.text=text || "";toast.show=true;if(toast.timer) clearTimeout(toast.timer);toast.timer=setTimeout(function(){toast.show=false;},3200);}
-    async function refreshAll(){await Promise.all([loadSummary(),loadAccounts(),loadSessions(),loadTasks(),loadModels(),loadLogs()]);}
+    async function refreshAll(){await Promise.all([loadSummary(),loadAccounts(),loadSessions(),loadTasks(),loadModels(),loadLogs(),loadServiceKey()]);}
     async function loadSummary(){try{const data=await api("/admin/summary");Object.assign(summary.service,data.service || {});summary.accounts=data.accounts || {};summary.tasks=data.tasks || {};}catch(err){showToast(err.message);}}
     async function loadAccounts(){const data=await api("/accounts");accounts.value=data.data || [];if(!selectedId.value && accounts.value.length) selectedId.value=accounts.value[0].id;if(selectedId.value && !accounts.value.some(function(account){return account.id===selectedId.value;})){selectedId.value=accounts.value[0] ? accounts.value[0].id : "";}}
     async function loadSessions(){const data=await api("/login-sessions");sessions.value=data.data || [];if(!selectedSessionId.value && sessions.value.length) selectedSessionId.value=sessions.value[0].id;if(selectedSessionId.value && !sessions.value.some(function(session){return session.id===selectedSessionId.value;})){selectedSessionId.value=sessions.value[0] ? sessions.value[0].id : "";}screenshotTick.value++;}
     async function loadTasks(){const data=await api("/tasks?limit=80");tasks.value=data.data || [];}
     async function loadModels(){const data=await api("/models");models.value=data.data || [];if(!models.value.some(function(model){return model.id===test.model;}) && models.value.length){test.model=models.value[0].id;}}
     async function loadLogs(){try{const data=await api("/logs");logs.value=(Array.isArray(data) ? data : []).slice().reverse();}catch(err){}}
+    async function loadServiceKey(){const data=await api("/service/api-key");serviceKey.api_key=data.api_key||"";}
+    async function saveServiceKey(){const data=await api("/service/api-key",{method:"PUT",body:JSON.stringify({api_key:serviceKey.api_key})});serviceKey.api_key=data.api_key||serviceKey.api_key;serviceKey.message="Saved and active";showToast("API Key saved");setTimeout(function(){serviceKey.message="";},2400);}
     function selectAccount(id){selectedId.value=id;accountProbe.status="";accountProbe.message="";}
     function selectSession(id){selectedSessionId.value=id;screenshotTick.value++;}
     function openSessionModal(id){if(id){selectedSessionId.value=id;}screenshotTick.value++;scanModal.value=true;}
@@ -686,7 +697,7 @@ createApp({
     function fmtClock(ts){return ts ? new Date(ts*1000).toLocaleTimeString("zh-CN",{hour12:false}) : "-";}
     onMounted(function(){refreshAll();pollTimer=setInterval(function(){if(tab.value==="logs"){loadLogs().catch(function(){});} if(tab.value==="accounts" || scanModal.value){loadSessions().catch(function(){});}},5000);});
     onBeforeUnmount(function(){if(pollTimer) clearInterval(pollTimer);if(toast.timer) clearTimeout(toast.timer);});
-    return{tabs,tab,title,busy,accounts,sessions,tasks,models,logs,summary,selectedId,selectedSessionId,selectedAccount,selectedSession,validCount,activeSessionCount,taskBreakdown,defaultChatModel,addModal,scanModal,newAccount,accountProbe,test,toast,adminKey,locationOrigin,refreshAll,loadAccounts,loadSessions,selectAccount,selectSession,openSessionModal,closeScanModal,openLatestSessionModal,openAdd,closeAdd,createAccount,testAccount,syncQuota,deleteAccount,clickLoginEntry,refreshSession,captureSession,deleteSession,runTest,copy,screenshotUrl,capabilityList,formatCaps,modelKind,statusClass,statusText,typeText,capText,initial,isProtectedAccount,fmtClock};
+    return{tabs,tab,title,busy,accounts,sessions,tasks,models,logs,summary,serviceKey,apiBase,selectedId,selectedSessionId,selectedAccount,selectedSession,validCount,activeSessionCount,taskBreakdown,defaultChatModel,addModal,scanModal,newAccount,accountProbe,test,toast,adminKey,locationOrigin,refreshAll,loadAccounts,loadSessions,selectAccount,selectSession,openSessionModal,closeScanModal,openLatestSessionModal,openAdd,closeAdd,createAccount,testAccount,syncQuota,deleteAccount,clickLoginEntry,refreshSession,captureSession,deleteSession,runTest,copy,screenshotUrl,capabilityList,formatCaps,modelKind,statusClass,statusText,typeText,capText,initial,isProtectedAccount,fmtClock,saveServiceKey};
   }
 }).mount("#app");
 </script>

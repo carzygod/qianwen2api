@@ -51,7 +51,7 @@ func requireBearer(w http.ResponseWriter, r *http.Request, key string) bool {
 }
 
 func requireAPIAuth(w http.ResponseWriter, r *http.Request) bool {
-	keys := []string{strings.TrimSpace(Cfg.AuthKey), strings.TrimSpace(os.Getenv("AUTH_KEY")), strings.TrimSpace(Cfg.AdminKey), strings.TrimSpace(os.Getenv("ADMIN_KEY"))}
+	keys := []string{effectiveAPIKey(), strings.TrimSpace(os.Getenv("AUTH_KEY")), strings.TrimSpace(Cfg.AdminKey), strings.TrimSpace(os.Getenv("ADMIN_KEY"))}
 	hasKey := false
 	for _, key := range keys {
 		if key != "" {
@@ -74,6 +74,15 @@ func requireAPIAuth(w http.ResponseWriter, r *http.Request) bool {
 	}
 	writeAPIError(w, http.StatusUnauthorized, "unauthorized", "缺少或错误的 Bearer Token。")
 	return false
+}
+
+func effectiveAPIKey() string {
+	if AppStore != nil {
+		if value, err := AppStore.GetSetting("api_key"); err == nil && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return strings.TrimSpace(Cfg.AuthKey)
 }
 
 func requireAdminAuth(w http.ResponseWriter, r *http.Request) bool {
