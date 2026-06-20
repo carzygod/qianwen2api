@@ -43,7 +43,8 @@ func createRunnableTestAccount(t *testing.T, store *Store) AccountRecord {
 		Type:             "login_cookie",
 		Status:           "valid",
 		Enabled:          true,
-		CookieString:     "XSRF-TOKEN=test-xsrf; qwen-test-cookie=value",
+		CookieString:     "XSRF-TOKEN=test-xsrf; tongyi_sso_ticket=value",
+		LocalStorageJSON: `{"access_token":"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.signature"}`,
 		CapabilitiesJSON: `{"chat":true,"image":true,"video":true}`,
 	}
 	if err := store.CreateAccount(&account); err != nil {

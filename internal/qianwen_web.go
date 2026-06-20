@@ -423,9 +423,6 @@ func filterMediaURLs(urls []string, mediaType string) []string {
 				continue
 			}
 		}
-		if !(strings.Contains(lower, "workspace-zb-cdn.qianwen.com") || strings.Contains(lower, "quark-aistudio-cdn.quark.cn") || strings.Contains(lower, "ai-studio-resource")) {
-			continue
-		}
 		if seen[u] {
 			continue
 		}

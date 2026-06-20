@@ -466,7 +466,7 @@ func (s *LoginSession) CaptureAccount() (*AccountRecord, error) {
 	var localStorageJSON string
 	var userAgent string
 	if ctx != nil {
-		_ = chromedp.Run(ctx, chromedp.Evaluate(`JSON.stringify(Object.fromEntries(Object.entries(localStorage)))`, &localStorageJSON))
+		localStorageJSON = captureQwenBrowserStorage(ctx)
 		_ = chromedp.Run(ctx, chromedp.Evaluate(`navigator.userAgent`, &userAgent))
 	}
 	if strings.TrimSpace(userAgent) == "" {
@@ -498,6 +498,43 @@ func (s *LoginSession) CaptureAccount() (*AccountRecord, error) {
 	s.mu.Unlock()
 	go s.releaseBrowser()
 	return account, nil
+}
+
+func captureQwenBrowserStorage(ctx context.Context) string {
+	type storageCapture struct {
+		URL            string                 `json:"url"`
+		Origin         string                 `json:"origin"`
+		LocalStorage   map[string]interface{} `json:"localStorage"`
+		SessionStorage map[string]interface{} `json:"sessionStorage"`
+	}
+	captures := []storageCapture{}
+	collect := func() {
+		var raw string
+		if err := chromedp.Run(ctx, chromedp.Evaluate(`JSON.stringify({
+			url: location.href,
+			origin: location.origin,
+			localStorage: Object.fromEntries(Object.entries(localStorage)),
+			sessionStorage: Object.fromEntries(Object.entries(sessionStorage))
+		})`, &raw)); err != nil || strings.TrimSpace(raw) == "" {
+			return
+		}
+		var capture storageCapture
+		if json.Unmarshal([]byte(raw), &capture) == nil {
+			captures = append(captures, capture)
+		}
+	}
+	collect()
+	if err := chromedp.Run(ctx,
+		chromedp.Navigate("https://chat.qwen.ai/"),
+		chromedp.Sleep(4*time.Second),
+	); err == nil {
+		collect()
+	}
+	if len(captures) == 0 {
+		return ""
+	}
+	body, _ := json.Marshal(map[string]interface{}{"captures": captures})
+	return string(body)
 }
 
 func (s *LoginSession) cookieSnapshot() (int, []capturedCookie) {
@@ -555,6 +592,7 @@ func (s *LoginSession) readCDPCookies() ([]capturedCookie, error) {
 		"https://www.qianwen.com/",
 		"https://qianwen.com/",
 		"https://api.qianwen.com/",
+		"https://chat.qwen.ai/",
 		"https://passport.aliyun.com/",
 		"https://login.taobao.com/",
 	}).Do(ctx)

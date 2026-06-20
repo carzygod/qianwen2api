@@ -85,30 +85,21 @@ func HandleImageGenerations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, err := newQwenWebClient(*account)
+	client, err := newQwenAIClient(*account)
 	if err != nil {
 		recordQianwenProviderFailure(account.ID, err)
 		writeAPIError(w, http.StatusFailedDependency, "login_account_invalid", err.Error())
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 150*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
-	state, events, err := client.submitImage(ctx, req)
+	result, err := client.generateImage(ctx, req)
 	if err != nil {
 		recordQianwenProviderFailure(account.ID, err)
 		writeAPIError(w, http.StatusBadGateway, "qianwen_image_submit_failed", err.Error())
 		return
 	}
-	urls := filterMediaURLs(extractURLs(events), "image")
-	if len(urls) == 0 {
-		result, err := client.pollMedia(ctx, state, "image", 130*time.Second)
-		if err != nil {
-			recordQianwenProviderFailure(account.ID, err)
-			writeAPIError(w, http.StatusGatewayTimeout, "qianwen_image_poll_failed", err.Error())
-			return
-		}
-		urls = result.URLs
-	}
+	urls := result.URLs
 	urls = limitURLs(urls, req.N)
 	if len(urls) == 0 {
 		writeAPIError(w, http.StatusBadGateway, "qianwen_image_empty_result", "Qianwen image generation completed without a media URL.")
@@ -267,24 +258,17 @@ func executeVideoTask(ctx context.Context, taskID string, req VideoGenerationReq
 }
 
 func submitAndPollVideoWithAccount(ctx context.Context, taskID string, req VideoGenerationRequest, account AccountRecord) error {
-	client, err := newQwenWebClient(account)
+	client, err := newQwenAIClient(account)
 	if err != nil {
 		return fmt.Errorf("login_account_invalid: %w", err)
 	}
-	submitCtx, cancelSubmit := context.WithTimeout(ctx, 90*time.Second)
-	state, events, err := client.submitVideo(submitCtx, req)
-	cancelSubmit()
+	_ = AppStore.UpdateTaskRunningWithAccount(taskID, account.ID, "", "", "", "")
+	result, err := client.generateVideo(ctx, req)
 	if err != nil {
+		if result != nil {
+			_ = AppStore.UpdateTaskFailed(taskID, "qianwen_video_generation_failed", err.Error(), marshalCompact(result))
+		}
 		return fmt.Errorf("qianwen_video_submit_failed: %w", err)
-	}
-	_ = AppStore.UpdateTaskRunningWithAccount(taskID, account.ID, state.ReqID, state.SessionID, marshalCompact(state), marshalCompact(events))
-
-	pollCtx, cancelPoll := context.WithTimeout(ctx, 8*time.Minute)
-	defer cancelPoll()
-	result, err := client.pollMedia(pollCtx, state, "video", 7*time.Minute)
-	if err != nil {
-		_ = AppStore.UpdateTaskFailed(taskID, "qianwen_video_poll_failed", err.Error(), marshalCompact(result))
-		return fmt.Errorf("qianwen_video_poll_failed: %w", err)
 	}
 	if len(result.URLs) == 0 {
 		return fmt.Errorf("qianwen video generation completed without a media URL")
@@ -299,7 +283,7 @@ func submitAndPollVideoWithAccount(ctx context.Context, taskID string, req Video
 	_ = AppStore.UpdateTaskCompleted(taskID, marshalCompact(map[string]interface{}{
 		"data": data,
 		"urls": result.URLs,
-	}), marshalCompact(result.Events))
+	}), marshalCompact(result))
 	_ = AppStore.UpdateAccountStatus(account.ID, "valid", "", true)
 	return nil
 }
