@@ -416,6 +416,12 @@ func (s *Store) UpdateAccountStatus(id, status, lastError string, success bool) 
 	return err
 }
 
+func (s *Store) RecordAccountTaskFailure(id, lastError string) error {
+	_, err := s.db.Exec(`UPDATE qianwen_accounts SET last_error=?, updated_at=? WHERE id=?`,
+		lastError, nowISO(), id)
+	return err
+}
+
 func (s *Store) SelectAccountForCapability(capability string) (*AccountRecord, error) {
 	accounts, err := s.ListAccounts()
 	if err != nil {

@@ -87,6 +87,7 @@ func HandleImageGenerations(w http.ResponseWriter, r *http.Request) {
 
 	client, err := newQwenWebClient(*account)
 	if err != nil {
+		recordQianwenProviderFailure(account.ID, err)
 		writeAPIError(w, http.StatusFailedDependency, "login_account_invalid", err.Error())
 		return
 	}
@@ -94,7 +95,7 @@ func HandleImageGenerations(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	state, events, err := client.submitImage(ctx, req)
 	if err != nil {
-		_ = AppStore.UpdateAccountStatus(account.ID, "unknown", err.Error(), false)
+		recordQianwenProviderFailure(account.ID, err)
 		writeAPIError(w, http.StatusBadGateway, "qianwen_image_submit_failed", err.Error())
 		return
 	}
@@ -102,7 +103,7 @@ func HandleImageGenerations(w http.ResponseWriter, r *http.Request) {
 	if len(urls) == 0 {
 		result, err := client.pollMedia(ctx, state, "image", 130*time.Second)
 		if err != nil {
-			_ = AppStore.UpdateAccountStatus(account.ID, "unknown", err.Error(), false)
+			recordQianwenProviderFailure(account.ID, err)
 			writeAPIError(w, http.StatusGatewayTimeout, "qianwen_image_poll_failed", err.Error())
 			return
 		}
@@ -251,7 +252,7 @@ func executeVideoTask(ctx context.Context, taskID string, req VideoGenerationReq
 			return nil
 		}
 		attemptErrors = append(attemptErrors, fmt.Sprintf("%s: %s", account.ID, err.Error()))
-		_ = AppStore.UpdateAccountStatus(account.ID, "unknown", err.Error(), false)
+		recordQianwenProviderFailure(account.ID, err)
 		if strings.TrimSpace(req.AccountID) != "" {
 			break
 		}

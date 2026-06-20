@@ -71,13 +71,13 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 func handleLoginChatRequest(w http.ResponseWriter, r *http.Request, req *ChatRequest, account *AccountRecord) {
 	client, err := newQwenWebClient(*account)
 	if err != nil {
-		_ = AppStore.UpdateAccountStatus(account.ID, "invalid", err.Error(), false)
+		recordQianwenProviderFailure(account.ID, err)
 		writeAPIError(w, http.StatusFailedDependency, "login_account_invalid", err.Error())
 		return
 	}
 	text, _, err := client.chat(r.Context(), req)
 	if err != nil {
-		_ = AppStore.UpdateAccountStatus(account.ID, "unknown", err.Error(), false)
+		recordQianwenProviderFailure(account.ID, err)
 		writeAPIError(w, http.StatusBadGateway, "qianwen_chat_failed", err.Error())
 		return
 	}
