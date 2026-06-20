@@ -297,7 +297,9 @@ pre.out{max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-wor
               <span :class="['badge',statusClass(selectedAccount.status)]">{{statusText(selectedAccount.status)}}</span>
             </div>
             <div class="actions" style="margin-bottom:16px">
-              <button class="btn primary" @click="testAccount(selectedAccount.id)" :disabled="accountProbe.loading">测活</button>
+              <button class="btn primary" @click="testAccount(selectedAccount.id,'chat')" :disabled="accountProbe.loading">测对话</button>
+              <button class="btn" @click="testAccount(selectedAccount.id,'image')" :disabled="accountProbe.loading">测生图</button>
+              <button class="btn" @click="testAccount(selectedAccount.id,'video')" :disabled="accountProbe.loading">测视频</button>
               <button class="btn" @click="syncQuota(selectedAccount.id)" :disabled="accountProbe.loading">同步额度</button>
               <button class="btn" @click="openLatestSessionModal">查看扫码会话</button>
               <button class="btn danger" v-if="!isProtectedAccount(selectedAccount.id)" @click="deleteAccount(selectedAccount.id)">删除账号</button>
@@ -312,7 +314,8 @@ pre.out{max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-wor
             </div>
             <div v-if="accountProbe.message" style="margin-top:14px">
               <span :class="['badge',statusClass(accountProbe.status)]">{{statusText(accountProbe.status)}}</span>
-              <span class="hint" style="margin-left:8px">{{accountProbe.message}}</span>
+              <span class="hint" style="margin-left:8px">{{capText(accountProbe.capability)}} · {{accountProbe.message}}</span>
+              <pre v-if="accountProbe.response" class="out" style="margin-top:12px">{{accountProbe.response}}</pre>
             </div>
           </div>
           <div class="card" v-else><div class="empty">请选择一个账号查看详情。</div></div>
@@ -547,7 +550,7 @@ createApp({
     const addModal=ref(false);
     const scanModal=ref(false);
     const newAccount=reactive({name:""});
-    const accountProbe=reactive({loading:false,status:"",message:""});
+    const accountProbe=reactive({loading:false,status:"",message:"",capability:"",response:""});
     const test=reactive({account_id:"",model:"tongyi-qwen3-max-model",prompt:"你好，请只回复一句话确认你可用。",duration:5,ratio:"16:9",output:"",error:"",loading:false});
     const toast=reactive({show:false,text:"",timer:0});
     const summary=reactive({service:{},accounts:{},tasks:{}});
@@ -596,7 +599,7 @@ createApp({
     async function loadLogs(){try{const data=await api("/logs");logs.value=(Array.isArray(data) ? data : []).slice().reverse();}catch(err){}}
     async function loadServiceKey(){const data=await api("/service/api-key");serviceKey.api_key=data.api_key||"";}
     async function saveServiceKey(){const data=await api("/service/api-key",{method:"PUT",body:JSON.stringify({api_key:serviceKey.api_key})});serviceKey.api_key=data.api_key||serviceKey.api_key;serviceKey.message="Saved and active";showToast("API Key saved");setTimeout(function(){serviceKey.message="";},2400);}
-    function selectAccount(id){selectedId.value=id;accountProbe.status="";accountProbe.message="";}
+    function selectAccount(id){selectedId.value=id;accountProbe.status="";accountProbe.message="";accountProbe.capability="";accountProbe.response="";}
     function selectSession(id){selectedSessionId.value=id;screenshotTick.value++;}
     function openSessionModal(id){if(id){selectedSessionId.value=id;}screenshotTick.value++;scanModal.value=true;}
     function closeScanModal(){scanModal.value=false;}
@@ -614,12 +617,14 @@ createApp({
         showToast("扫码会话已创建，请在弹窗中完成扫码。");
       }catch(err){showToast(err.message);}
     }
-    async function testAccount(id){
-      accountProbe.loading=true;accountProbe.status="";accountProbe.message="";
+    async function testAccount(id, capability){
+      capability=capability || "chat";
+      accountProbe.loading=true;accountProbe.status="";accountProbe.message="";accountProbe.capability=capability;accountProbe.response="";
       try{
-        const result=await api("/accounts/"+encodeURIComponent(id)+"/test",{method:"POST",body:JSON.stringify({capability:"chat"})});
-        accountProbe.status=result.ok ? "valid" : "invalid";
+        const result=await api("/accounts/"+encodeURIComponent(id)+"/test",{method:"POST",body:JSON.stringify({capability:capability})});
+        accountProbe.status=result.status || (result.ok ? "valid" : "invalid");
         accountProbe.message=result.message || "账号测活完成。";
+        accountProbe.response=result.response_text || "";
         showToast(accountProbe.message);
       }catch(err){accountProbe.status="error";accountProbe.message=err.message;showToast(err.message);}
       finally{accountProbe.loading=false;await refreshAll();}
