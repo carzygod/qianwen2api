@@ -136,6 +136,19 @@ func (qc *QianwenClient) GetGuestTicket() (string, error) {
 }
 
 func (qc *QianwenClient) RegisterAndGetTokens(bxUmidtoken string) (*RegisterResponse, error) {
+	return qc.RegisterAndGetTokensForScenes(bxUmidtoken, "qwen_web", []string{"qwen_business"}, qc.baAPIURL)
+}
+
+func (qc *QianwenClient) RegisterAndGetTokensForScenes(bxUmidtoken, businessScene string, scenes []string, baAPIURL string) (*RegisterResponse, error) {
+	if businessScene == "" {
+		businessScene = "qwen_web"
+	}
+	if len(scenes) == 0 {
+		scenes = []string{"qwen_chat", "voice_command"}
+	}
+	if baAPIURL == "" {
+		baAPIURL = qc.baAPIURL
+	}
 	fingerprint := generateFingerprint(qc.deviceID)
 	chid := generateChid()
 
@@ -147,15 +160,15 @@ func (qc *QianwenClient) RegisterAndGetTokens(bxUmidtoken string) (*RegisterResp
 		"fontList":            []string{"Arial", "Calibri", "Century", "SimHei"},
 		"pluginList":          []interface{}{},
 		"language":            []string{"zh-CN"},
-		"unifyRelateGenerate": []string{"qwen_business"},
+		"unifyRelateGenerate": scenes,
 		"fingerprint":         fingerprint,
-		"businessScene":       "qwen_web",
+		"businessScene":       businessScene,
 		"chid":                chid,
 	}
 
 	bodyBytes, _ := json.Marshal(payload)
 
-	req, err := http.NewRequest("POST", qc.baAPIURL+"/security/external/access/register", bytes.NewReader(bodyBytes))
+	req, err := http.NewRequest("POST", baAPIURL+"/security/external/access/register", bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, err
 	}

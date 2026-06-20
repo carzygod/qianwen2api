@@ -635,27 +635,6 @@ func (s *LoginSession) readProfileCookies() ([]capturedCookie, error) {
 	return cookies, rows.Err()
 }
 
-func hasLikelyLoginCookie(cookies []capturedCookie) bool {
-	if len(cookies) == 0 {
-		return false
-	}
-	authMarkers := []string{
-		"login", "token", "session", "sid", "havana", "aliyun", "taobao",
-		"munb", "unb", "cookie2", "_tb_token_", "sgcookie", "x5sec", "isg", "tfstk",
-		"tongyi_sso_ticket", "tongyi_sso_ticket_hash",
-	}
-	for _, cookie := range cookies {
-		name := strings.ToLower(cookie.Name)
-		domain := strings.ToLower(cookie.Domain)
-		for _, marker := range authMarkers {
-			if strings.Contains(name, marker) || strings.Contains(domain, marker) {
-				return true
-			}
-		}
-	}
-	return len(cookies) >= 2
-}
-
 func cookieNames(cookies []capturedCookie) []string {
 	names := make([]string, 0, len(cookies))
 	for _, cookie := range cookies {

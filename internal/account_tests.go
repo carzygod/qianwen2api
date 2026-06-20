@@ -63,6 +63,12 @@ func TestAccount(accountID, capability string) (*AccountTestResult, error) {
 		return result, nil
 	}
 
+	if capability != "chat" && !accountHasQianwenLoginMaterial(*account) {
+		result.Status = "invalid"
+		result.Message = "账号当前只有 qianwen.com 访客态 Cookie，缺少真实登录票据；对话可能可用，但生图/生视频会返回登录卡片。请重新扫码登录后再测试该能力。"
+		return result, nil
+	}
+
 	client, err := newQwenWebClient(*account)
 	if err != nil {
 		result.Status = "invalid"

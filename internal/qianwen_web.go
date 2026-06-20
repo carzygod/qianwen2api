@@ -227,7 +227,7 @@ func (c *qwenWebClient) pollMedia(ctx context.Context, state *qwenRequestState, 
 			return &mediaPollResult{URLs: urls, Events: events}, nil
 		}
 		if time.Now().After(deadline) {
-			return &mediaPollResult{Events: lastEvents}, fmt.Errorf("qianwen %s generation did not return media url before timeout", mediaType)
+			return &mediaPollResult{Events: lastEvents}, fmt.Errorf("qianwen %s generation did not return media url before timeout: %s", mediaType, summarizeMediaEvents(lastEvents, mediaType))
 		}
 		select {
 		case <-ctx.Done():
@@ -270,11 +270,15 @@ func (c *qwenWebClient) buildBasePayload(prompt string) *qwenRequestState {
 
 func (c *qwenWebClient) postPayload(ctx context.Context, path string, state *qwenRequestState) ([]qwenWebEvent, error) {
 	body, _ := json.Marshal(state.Payload)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.apiURL(path, state.DeviceID), bytes.NewReader(body))
+	signedURL, acsDeviceID, acsHeaders, err := loginACSAuth.signedURLAndHeaders(c.account, path, body)
 	if err != nil {
 		return nil, err
 	}
-	c.setHeaders(httpReq, state)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, signedURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	c.setHeaders(httpReq, state, acsDeviceID, acsHeaders)
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		return nil, err
@@ -291,13 +295,7 @@ func (c *qwenWebClient) postPayload(ctx context.Context, path string, state *qwe
 	return events, nil
 }
 
-func (c *qwenWebClient) apiURL(path, deviceID string) string {
-	ts := time.Now().UnixMilli()
-	return fmt.Sprintf("%s%s?biz_id=ai_qwen&fe_version=1.0.0&chat_client=h5&device=pc&fr=pc&pr=qwen&ut=%s&la=zh-CN&tz=UTC&wv=2.12.3&ve=2.12.3&nonce=%s&timestamp=%d",
-		qwenChatAPIURL, path, deviceID, generateRandomToken(11, ""), ts)
-}
-
-func (c *qwenWebClient) setHeaders(req *http.Request, state *qwenRequestState) {
+func (c *qwenWebClient) setHeaders(req *http.Request, state *qwenRequestState, acsDeviceID string, acsHeaders map[string]string) {
 	req.Header.Set("User-Agent", c.userAgent)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream, text/plain, */*")
@@ -305,7 +303,11 @@ func (c *qwenWebClient) setHeaders(req *http.Request, state *qwenRequestState) {
 	req.Header.Set("Referer", qwenWebBaseURL+"/chat")
 	req.Header.Set("Cookie", c.cookieHeader)
 	req.Header.Set("x-platform", "pc_tongyi")
-	req.Header.Set("x-device-id", state.DeviceID)
+	if acsDeviceID != "" {
+		req.Header.Set("x-device-id", acsDeviceID)
+	} else {
+		req.Header.Set("x-device-id", state.DeviceID)
+	}
 	req.Header.Set("x-chat-id", state.ReqID)
 	req.Header.Set("x-wpk-reqid", state.ReqID)
 	req.Header.Set("x-chat-biz", mustJSONString(map[string]interface{}{"chatId": state.ReqID, "agentId": "", "enableWebp": ""}))
@@ -315,6 +317,27 @@ func (c *qwenWebClient) setHeaders(req *http.Request, state *qwenRequestState) {
 	if c.xsrfToken != "" {
 		req.Header.Set("x-csrf-token", c.xsrfToken)
 	}
+	for key, value := range acsHeaders {
+		if value != "" {
+			req.Header.Set(key, value)
+		}
+	}
+}
+
+func summarizeMediaEvents(events []qwenWebEvent, mediaType string) string {
+	urls := extractURLs(events)
+	filtered := filterMediaURLs(urls, mediaType)
+	text := extractQwenText(events)
+	if len(text) > 240 {
+		text = text[:240]
+	}
+	summary := map[string]interface{}{
+		"events":        len(events),
+		"urls":          urls,
+		"filtered_urls": filtered,
+		"text":          strings.TrimSpace(text),
+	}
+	return marshalCompact(summary)
 }
 
 func parseQwenSSE(body io.Reader) ([]qwenWebEvent, error) {
@@ -335,7 +358,7 @@ func parseQwenSSE(body io.Reader) ([]qwenWebEvent, error) {
 			LogWarn("Failed to parse qianwen SSE event: %v", err)
 			continue
 		}
-		if event.ErrorCode != 0 || strings.TrimSpace(event.ErrorMsg) != "" {
+		if event.ErrorCode != 0 {
 			return events, fmt.Errorf("qianwen error %d: %s", event.ErrorCode, event.ErrorMsg)
 		}
 		events = append(events, event)
