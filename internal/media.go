@@ -85,15 +85,9 @@ func HandleImageGenerations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, err := newQwenAIClient(*account)
-	if err != nil {
-		recordQianwenProviderFailure(account.ID, err)
-		writeAPIError(w, http.StatusFailedDependency, "login_account_invalid", err.Error())
-		return
-	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
-	result, err := client.generateImage(ctx, req)
+	result, err := generateImageWithAccount(ctx, *account, req)
 	if err != nil {
 		recordQianwenProviderFailure(account.ID, err)
 		writeAPIError(w, http.StatusBadGateway, "qianwen_image_submit_failed", err.Error())
@@ -128,6 +122,47 @@ func imageCandidateAccount(req ImageGenerationRequest) (*AccountRecord, error) {
 		return account, nil
 	}
 	return AppStore.SelectRunnableAccountForCapability("image")
+}
+
+func generateImageWithAccount(ctx context.Context, account AccountRecord, req ImageGenerationRequest) (*qwenAIMediaResult, error) {
+	var aiErr error
+	if accountHasQwenAIToken(account) {
+		client, err := newQwenAIClient(account)
+		if err == nil {
+			result, err := client.generateImage(ctx, req)
+			if err == nil {
+				return result, nil
+			}
+			aiErr = err
+		} else {
+			aiErr = err
+		}
+	}
+
+	client, err := newQwenWebClient(account)
+	if err != nil {
+		return nil, combineMediaFallbackError(aiErr, fmt.Errorf("qianwen.com media fallback init failed: %w", err))
+	}
+	state, events, err := client.submitImage(ctx, req)
+	if err != nil {
+		return nil, combineMediaFallbackError(aiErr, fmt.Errorf("qianwen.com image submit failed: %w", err))
+	}
+	urls := filterMediaURLs(extractURLs(events), "image")
+	if len(urls) == 0 {
+		result, err := client.pollMedia(ctx, state, "image", 130*time.Second)
+		if err != nil {
+			return nil, combineMediaFallbackError(aiErr, fmt.Errorf("qianwen.com image poll failed: %w", err))
+		}
+		urls = result.URLs
+		events = result.Events
+	}
+	return &qwenAIMediaResult{
+		URLs:         urls,
+		ChatID:       state.SessionID,
+		TaskID:       state.ReqID,
+		RequestJSON:  marshalCompact(state),
+		ResponseJSON: marshalCompact(events),
+	}, nil
 }
 
 func HandleVideoGenerations(w http.ResponseWriter, r *http.Request) {
@@ -258,12 +293,8 @@ func executeVideoTask(ctx context.Context, taskID string, req VideoGenerationReq
 }
 
 func submitAndPollVideoWithAccount(ctx context.Context, taskID string, req VideoGenerationRequest, account AccountRecord) error {
-	client, err := newQwenAIClient(account)
-	if err != nil {
-		return fmt.Errorf("login_account_invalid: %w", err)
-	}
 	_ = AppStore.UpdateTaskRunningWithAccount(taskID, account.ID, "", "", "", "")
-	result, err := client.generateVideo(ctx, req)
+	result, err := generateVideoWithAccount(ctx, account, req)
 	if err != nil {
 		if result != nil {
 			_ = AppStore.UpdateTaskFailed(taskID, "qianwen_video_generation_failed", err.Error(), marshalCompact(result))
@@ -286,6 +317,57 @@ func submitAndPollVideoWithAccount(ctx context.Context, taskID string, req Video
 	}), marshalCompact(result))
 	_ = AppStore.UpdateAccountStatus(account.ID, "valid", "", true)
 	return nil
+}
+
+func generateVideoWithAccount(ctx context.Context, account AccountRecord, req VideoGenerationRequest) (*qwenAIMediaResult, error) {
+	var aiErr error
+	if accountHasQwenAIToken(account) {
+		client, err := newQwenAIClient(account)
+		if err == nil {
+			result, err := client.generateVideo(ctx, req)
+			if err == nil {
+				return result, nil
+			}
+			aiErr = err
+		} else {
+			aiErr = err
+		}
+	}
+
+	client, err := newQwenWebClient(account)
+	if err != nil {
+		return nil, combineMediaFallbackError(aiErr, fmt.Errorf("qianwen.com media fallback init failed: %w", err))
+	}
+	state, events, err := client.submitVideo(ctx, req)
+	if err != nil {
+		return nil, combineMediaFallbackError(aiErr, fmt.Errorf("qianwen.com video submit failed: %w", err))
+	}
+	urls := filterMediaURLs(extractURLs(events), "video")
+	if len(urls) == 0 {
+		result, err := client.pollMedia(ctx, state, "video", 7*time.Minute)
+		if err != nil {
+			return nil, combineMediaFallbackError(aiErr, fmt.Errorf("qianwen.com video poll failed: %w", err))
+		}
+		urls = result.URLs
+		events = result.Events
+	}
+	return &qwenAIMediaResult{
+		URLs:         urls,
+		ChatID:       state.SessionID,
+		TaskID:       state.ReqID,
+		RequestJSON:  marshalCompact(state),
+		ResponseJSON: marshalCompact(events),
+	}, nil
+}
+
+func combineMediaFallbackError(primary, fallback error) error {
+	if primary == nil {
+		return fallback
+	}
+	if fallback == nil {
+		return primary
+	}
+	return fmt.Errorf("%v; fallback: %w", primary, fallback)
 }
 
 func HandleVideoTask(w http.ResponseWriter, r *http.Request) {

@@ -645,9 +645,6 @@ func accountSupportsCapability(a AccountRecord, capability string) bool {
 		if !accountHasQianwenLoginMaterial(a) {
 			return false
 		}
-		if !accountHasQwenAIToken(a) {
-			return false
-		}
 	}
 	if a.CapabilitiesJSON == "" {
 		return a.Type != "guest" || capability == "chat"

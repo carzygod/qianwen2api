@@ -69,25 +69,11 @@ func TestAccount(accountID, capability string) (*AccountTestResult, error) {
 		return result, nil
 	}
 
-	if capability != "chat" && !accountHasQwenAIToken(*account) {
-		result.Status = "invalid"
-		result.Message = "账号缺少 chat.qwen.ai Bearer token。请在 Admin 中重新扫码登录，系统会同时捕获 qianwen.com 与 chat.qwen.ai 的登录材料。"
-		_ = AppStore.UpdateAccountStatus(accountID, "invalid", result.Message, false)
-		return result, nil
-	}
-
 	if capability == "image" || capability == "video" {
-		client, err := newQwenAIClient(*account)
-		if err != nil {
-			result.Status = "invalid"
-			result.Message = err.Error()
-			_ = AppStore.UpdateAccountStatus(accountID, "invalid", result.Message, false)
-			return result, nil
-		}
 		ctx, cancel := context.WithTimeout(context.Background(), 9*time.Minute)
 		defer cancel()
 		if capability == "image" {
-			media, err := client.generateImage(ctx, ImageGenerationRequest{
+			media, err := generateImageWithAccount(ctx, *account, ImageGenerationRequest{
 				Model:  Cfg.DefaultImageModel,
 				Prompt: "生成一张简单的蓝色圆形图标，用于账号可用性测试。",
 				N:      1,
@@ -106,7 +92,7 @@ func TestAccount(accountID, capability string) (*AccountTestResult, error) {
 			_ = AppStore.UpdateAccountStatus(accountID, "valid", "", true)
 			return result, nil
 		}
-		media, err := client.generateVideo(ctx, VideoGenerationRequest{
+		media, err := generateVideoWithAccount(ctx, *account, VideoGenerationRequest{
 			Model:       Cfg.DefaultVideoModel,
 			Prompt:      "生成一个白色立方体在桌面缓慢旋转的 1 秒短视频。",
 			Duration:    1,
