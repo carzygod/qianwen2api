@@ -79,6 +79,15 @@ func HandleImageGenerations(w http.ResponseWriter, r *http.Request) {
 	if req.Model == "" {
 		req.Model = Cfg.DefaultImageModel
 	}
+	if isQianwenVideoModelName(req.Model) {
+		writeAPIError(
+			w,
+			http.StatusBadRequest,
+			"video_model_on_image_endpoint",
+			fmt.Sprintf("model %q is a video model; use /v1/video/generations or /v1/videos/generations", req.Model),
+		)
+		return
+	}
 	if req.N == 0 {
 		req.N = 1
 	}
@@ -663,6 +672,18 @@ func normalizeQianwenVideoModel(model string) string {
 	default:
 		return trimmed
 	}
+}
+
+func isQianwenVideoModelName(model string) bool {
+	trimmed := strings.TrimSpace(model)
+	if trimmed == "" {
+		return false
+	}
+	if strings.EqualFold(normalizeQianwenVideoModel(trimmed), QianwenVideoModelID) {
+		return true
+	}
+	compact := strings.NewReplacer(" ", "", "-", "", "_", "", ".", "").Replace(strings.ToLower(trimmed))
+	return strings.Contains(compact, "happyhorse")
 }
 
 func wantsSyncVideo(req VideoGenerationRequest) bool {
