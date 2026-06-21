@@ -31,7 +31,7 @@ This project does not use official Qwen API keys. It captures logged-in qianwen.
 | Video polling | `/v1/videos/{task_id}` plus legacy aliases |
 | Video cancel | `/v1/videos/{task_id}/cancel` plus legacy aliases |
 | NewAPI use | Can be added as an OpenAI-compatible channel for chat/image/video |
-| Image-to-video material handling | qianwen.com fallback uses official `attachments[].materialId`; generated images return `metadata.qianwen_material_id` for reuse |
+| Image-to-video material handling | qianwen.com fallback uses official `attachments[].materialId`; existing Qianwen material ids are reused, and public URLs / data URI / base64 images are uploaded through the qianwen.com Web runtime before submission |
 
 ### Models
 
@@ -90,7 +90,21 @@ curl http://127.0.0.1:18002/v1/videos \
 
 ### Image-To-Video Notes
 
-When the qianwen.com fallback route is used, image-to-video requests must reference a Qianwen material id. The service records this automatically when an image is generated through `/v1/images/generations`.
+When the qianwen.com fallback route is used, image-to-video requests are converted to the official qianwen.com attachment shape:
+
+```json
+{
+  "attachments": [
+    {"type": "image", "materialId": "..."}
+  ]
+}
+```
+
+The resolver uses this order:
+
+1. Reuse explicit `metadata.qianwen_material_id` / `metadata.qwen_resource`.
+2. Reuse a stored SQLite asset mapping from a previous `/v1/images/generations` result.
+3. Upload public URL, data URI, or raw base64 image input with the qianwen.com Web runtime and use the returned material id.
 
 Image generation response example:
 
@@ -113,7 +127,47 @@ Image generation response example:
 }
 ```
 
-Use the returned `url` in `image_url`, or pass `metadata.qianwen_material_id` / `metadata.qwen_resource` explicitly. A bare external image URL that cannot be mapped to a Qianwen material id is rejected instead of being treated as an uploaded attachment.
+Use the returned `url` in `image_url`, or pass `metadata.qianwen_material_id` / `metadata.qwen_resource` explicitly. Public URL, data URI, and raw base64 image inputs are also accepted; they are uploaded to qianwen.com and then submitted as `attachments[].materialId`.
+
+Two-image video request example:
+
+```json
+{
+  "model": "HappyHorse 1.0",
+  "prompt": "Use the first image as the opening frame and the second image as the visual target.",
+  "first_frame_image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+  "reference_images": [
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..."
+  ],
+  "duration": 5,
+  "resolution": "720P",
+  "aspect_ratio": "16:9"
+}
+```
+
+### NewAPI Validation
+
+QIANWEN-WEB-01 can be configured in NewAPI as an OpenAI-compatible channel with `HappyHorse 1.0` in the channel model list. The tested NewAPI route is:
+
+```text
+POST /v1/video/generations
+GET  /v1/video/generations/{task_id}
+```
+
+Validation performed on 2026-06-21:
+
+| Item | Result |
+|---|---|
+| NewAPI task | `task_GW8rRGXBlR1xNW8tNhcBpUBy22BaD2X9` |
+| QIANWEN-WEB-01 task | `4fa38a69-326d-4abc-aa35-c45ca85f6067` |
+| Model | `HappyHorse 1.0` |
+| Input | `first_frame_image` plus one `reference_images` item, both as data URI PNG |
+| Parameters | `duration=5`, `resolution=720P`, `aspect_ratio=16:9` |
+| Upstream payload | 2 official `attachments[].materialId` values |
+| Status | NewAPI `SUCCESS`, QIANWEN-WEB-01 `succeeded` |
+| Output | 2 reachable `video/mp4` URLs |
+
+Known NewAPI caveat: task polling returns the video URLs correctly. The optional content proxy endpoint `/v1/videos/{task_id}/content` depends on NewAPI fetch/SSRF settings and may need its allowed ports/domains adjusted before it can proxy the video bytes itself.
 
 ## 中文
 
@@ -143,6 +197,7 @@ QIANWEN-WEB-01 是 gen2api 使用的 qianwen.com / 通义千问 Web 反代维护
 | 视频轮询 | `/v1/videos/{task_id}` 及旧别名 |
 | 视频取消 | `/v1/videos/{task_id}/cancel` 及旧别名 |
 | NewAPI | 可作为 OpenAI 兼容渠道接入对话 / 图片 / 视频 |
+| 图文生视频素材处理 | qianwen.com fallback 使用官方 `attachments[].materialId`；已存在的素材 ID 会复用，公网 URL / data URI / base64 图片会通过 qianwen.com Web 运行时自动上传后再提交 |
 
 ### 模型
 
@@ -199,6 +254,64 @@ curl http://127.0.0.1:18002/v1/videos \
   }'
 ```
 
+### 图文生视频说明
+
+qianwen.com fallback 路线会把图文生视频输入转换成官方附件结构：
+
+```json
+{
+  "attachments": [
+    {"type": "image", "materialId": "..."}
+  ]
+}
+```
+
+素材解析顺序：
+
+1. 优先复用显式传入的 `metadata.qianwen_material_id` / `metadata.qwen_resource`。
+2. 如果是本服务生图返回的 URL，则从 SQLite 资产表复用历史素材映射。
+3. 如果是公网 URL、data URI 或裸 base64 图片，则通过 qianwen.com Web 前端运行时上传成官方素材，再写入 `attachments[].materialId`。
+
+两图生视频示例：
+
+```json
+{
+  "model": "HappyHorse 1.0",
+  "prompt": "以第一张图作为开场画面，第二张图作为视觉目标，生成 5 秒平滑转场视频",
+  "first_frame_image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+  "reference_images": [
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..."
+  ],
+  "duration": 5,
+  "resolution": "720P",
+  "aspect_ratio": "16:9"
+}
+```
+
+### NewAPI 验证
+
+QIANWEN-WEB-01 可以在 NewAPI 中配置为 OpenAI 兼容渠道，渠道模型列表中包含 `HappyHorse 1.0`。已验证的 NewAPI 路由：
+
+```text
+POST /v1/video/generations
+GET  /v1/video/generations/{task_id}
+```
+
+2026-06-21 验证结果：
+
+| 项 | 结果 |
+|---|---|
+| NewAPI 任务 | `task_GW8rRGXBlR1xNW8tNhcBpUBy22BaD2X9` |
+| QIANWEN-WEB-01 上游任务 | `4fa38a69-326d-4abc-aa35-c45ca85f6067` |
+| 模型 | `HappyHorse 1.0` |
+| 输入 | `first_frame_image` + 1 张 `reference_images`，均为 data URI PNG |
+| 参数 | `duration=5`、`resolution=720P`、`aspect_ratio=16:9` |
+| 上游 payload | 2 个官方 `attachments[].materialId` |
+| 状态 | NewAPI `SUCCESS`，QIANWEN-WEB-01 `succeeded` |
+| 输出 | 2 个可访问的 `video/mp4` URL |
+
+已知边界：NewAPI 任务轮询可以正确返回视频 URL。可选的 `/v1/videos/{task_id}/content` 内容代理受 NewAPI fetch/SSRF 白名单影响，若要由 NewAPI 代理视频字节，需要额外放开对应的代理目标端口或域名。
+
 ## Русский
 
 QIANWEN-WEB-01 — поддерживаемый Web reverse-proxy для qianwen.com, используемый в gen2api.
@@ -228,6 +341,7 @@ QIANWEN-WEB-01 — поддерживаемый Web reverse-proxy для qianwen
 | Video polling | `/v1/videos/{task_id}` и legacy aliases |
 | Video cancel | `/v1/videos/{task_id}/cancel` и legacy aliases |
 | NewAPI use | Можно добавить как OpenAI-compatible канал |
+| Image-to-video material handling | qianwen.com fallback submits official `attachments[].materialId`; public URLs, data URI, and base64 images are uploaded through the qianwen.com Web runtime |
 
 ### Модели
 
