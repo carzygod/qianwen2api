@@ -10,12 +10,13 @@ import (
 )
 
 const (
-	qwenWebAuthBusinessScene = "qwen_web"
-	qwenWebAuthChatScene     = "qwen_chat"
-	qwenWebSecurityBaseURL   = "https://sec.qianwen.com"
-	qwenWebVersion           = "2.13.2"
-	qwenWebFEVersion         = "1.0.0"
-	qwenWebACSVersion        = "1.0.0"
+	qwenWebAuthBusinessScene  = "qwen_web"
+	qwenWebAuthChatScene      = "qwen_chat"
+	qwenWebAuthWorkspaceScene = "workspace_api"
+	qwenWebSecurityBaseURL    = "https://sec.qianwen.com"
+	qwenWebVersion            = "2.13.2"
+	qwenWebFEVersion          = "1.0.0"
+	qwenWebACSVersion         = "1.0.0"
 )
 
 type qwenWebACSToken struct {
@@ -28,13 +29,15 @@ type qwenWebACSToken struct {
 }
 
 type qwenWebACSAuth struct {
-	mu        sync.Mutex
-	umidToken string
-	dvidn     string
-	actkn     string
-	snver     string
-	bacsft    []string
-	expiresAt time.Time
+	mu              sync.Mutex
+	umidToken       string
+	dvidn           string
+	actkn           string
+	snver           string
+	bacsft          []string
+	workspaceActkn  string
+	workspaceBacsft []string
+	expiresAt       time.Time
 }
 
 type queryPair struct {
@@ -45,7 +48,11 @@ type queryPair struct {
 var loginACSAuth = &qwenWebACSAuth{}
 
 func (a *qwenWebACSAuth) signedURLAndHeaders(account AccountRecord, path string, body []byte) (string, string, map[string]string, error) {
-	token, err := a.consumeToken()
+	return a.signedURLAndHeadersForScene(account, qwenChatAPIURL, path, nil, body, qwenWebAuthChatScene)
+}
+
+func (a *qwenWebACSAuth) signedURLAndHeadersForScene(account AccountRecord, baseURL, path string, extraPairs []queryPair, body []byte, scene string) (string, string, map[string]string, error) {
+	token, err := a.consumeTokenForScene(scene)
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -71,6 +78,7 @@ func (a *qwenWebACSAuth) signedURLAndHeaders(account AccountRecord, path string,
 		{Key: "nonce", Value: generateRandomToken(11, "")},
 		{Key: "timestamp", Value: fmt.Sprintf("%d", queryTS)},
 	}
+	pairs = append(pairs, extraPairs...)
 
 	paramKeys := make([]string, 0, len(pairs))
 	paramValue := strings.Builder{}
@@ -111,10 +119,14 @@ func (a *qwenWebACSAuth) signedURLAndHeaders(account AccountRecord, path string,
 		headers["bx-umidtoken"] = token.UMIDToken
 	}
 
-	return qwenChatAPIURL + path + "?" + rawQuery.String(), ut, headers, nil
+	return strings.TrimRight(baseURL, "/") + path + "?" + rawQuery.String(), ut, headers, nil
 }
 
 func (a *qwenWebACSAuth) consumeToken() (*qwenWebACSToken, error) {
+	return a.consumeTokenForScene(qwenWebAuthChatScene)
+}
+
+func (a *qwenWebACSAuth) consumeTokenForScene(scene string) (*qwenWebACSToken, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -130,17 +142,26 @@ func (a *qwenWebACSAuth) consumeToken() (*qwenWebACSToken, error) {
 	if len(a.bacsft) == 0 {
 		return nil, fmt.Errorf("qianwen web ACS bacsft token is empty")
 	}
-	bacsft := a.bacsft[0]
-	a.bacsft = a.bacsft[1:]
+	actkn := a.actkn
+	bacsftTokens := &a.bacsft
+	if scene == qwenWebAuthWorkspaceScene && len(a.workspaceBacsft) > 0 {
+		actkn = defaultString(a.workspaceActkn, a.actkn)
+		bacsftTokens = &a.workspaceBacsft
+	}
+	if len(*bacsftTokens) == 0 {
+		return nil, fmt.Errorf("qianwen web ACS %s bacsft token is empty", scene)
+	}
+	bacsft := (*bacsftTokens)[0]
+	*bacsftTokens = (*bacsftTokens)[1:]
 	token := &qwenWebACSToken{
 		Dvidn:     a.dvidn,
-		Actkn:     a.actkn,
+		Actkn:     actkn,
 		Snver:     a.snver,
 		Bacsft:    bacsft,
 		UMIDToken: a.umidToken,
 		ExpiresAt: a.expiresAt,
 	}
-	if len(a.bacsft) <= 5 {
+	if len(*bacsftTokens) <= 5 {
 		go a.refreshAsync()
 	}
 	return token, nil
@@ -172,7 +193,7 @@ func (a *qwenWebACSAuth) registerLocked(forceUMID bool) error {
 	if err != nil {
 		return fmt.Errorf("create qianwen security client: %w", err)
 	}
-	resp, err := client.RegisterAndGetTokensForScenes(a.umidToken, qwenWebAuthBusinessScene, []string{qwenWebAuthChatScene, "voice_command"}, qwenWebSecurityBaseURL)
+	resp, err := client.RegisterAndGetTokensForScenes(a.umidToken, qwenWebAuthBusinessScene, []string{qwenWebAuthChatScene, qwenWebAuthWorkspaceScene, "voice_command"}, qwenWebSecurityBaseURL)
 	if err != nil {
 		return fmt.Errorf("register qianwen web ACS token: %w", err)
 	}
@@ -181,22 +202,30 @@ func (a *qwenWebACSAuth) registerLocked(forceUMID bool) error {
 	a.snver = resp.Data.EoCltSnver
 	a.actkn = resp.Data.EoCltActkn
 	a.bacsft = resp.Data.EoCltBacsft
+	a.workspaceActkn = resp.Data.EoCltActkn
+	a.workspaceBacsft = append([]string(nil), resp.Data.EoCltBacsft...)
 	expiresAt := time.Unix(resp.Data.EoCltActknDl, 0)
 
 	for _, relate := range resp.Data.UnifyRelate {
-		if relate.BusinessScene != qwenWebAuthChatScene {
-			continue
+		switch relate.BusinessScene {
+		case qwenWebAuthChatScene:
+			if relate.EoCltActkn != "" {
+				a.actkn = relate.EoCltActkn
+			}
+			if len(relate.EoCltBacsft) > 0 {
+				a.bacsft = relate.EoCltBacsft
+			}
+			if relate.EoCltActknDl > 0 {
+				expiresAt = time.Unix(relate.EoCltActknDl, 0)
+			}
+		case qwenWebAuthWorkspaceScene:
+			if relate.EoCltActkn != "" {
+				a.workspaceActkn = relate.EoCltActkn
+			}
+			if len(relate.EoCltBacsft) > 0 {
+				a.workspaceBacsft = relate.EoCltBacsft
+			}
 		}
-		if relate.EoCltActkn != "" {
-			a.actkn = relate.EoCltActkn
-		}
-		if len(relate.EoCltBacsft) > 0 {
-			a.bacsft = relate.EoCltBacsft
-		}
-		if relate.EoCltActknDl > 0 {
-			expiresAt = time.Unix(relate.EoCltActknDl, 0)
-		}
-		break
 	}
 	if expiresAt.IsZero() {
 		expiresAt = time.Now().Add(2 * time.Hour)

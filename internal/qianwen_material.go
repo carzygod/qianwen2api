@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -57,6 +58,44 @@ func resolveQwenVideoInputResources(req VideoGenerationRequest) ([]qwenImageReso
 	return dedupeQwenImageResources(resources), nil
 }
 
+func (c *qwenWebClient) resolveVideoInputResources(ctx context.Context, req VideoGenerationRequest) ([]qwenImageResource, error) {
+	var resources []qwenImageResource
+	if req.Metadata != nil {
+		resources = append(resources, extractQwenImageResources(req.Metadata)...)
+	}
+
+	sources := []string{
+		req.FirstFrameImage,
+		req.ImageURL,
+		req.Image,
+		req.FileID,
+	}
+	sources = append(sources, req.ReferenceImages...)
+
+	for _, source := range dedupeStrings(sources) {
+		source = strings.TrimSpace(source)
+		if source == "" {
+			continue
+		}
+		resource, ok, err := resolveQwenImageResourceInput(source)
+		if err != nil {
+			if isUploadableQwenImageSource(source) {
+				resource, err = c.uploadImageMaterial(ctx, source)
+				if err != nil {
+					return nil, err
+				}
+				resources = append(resources, resource)
+				continue
+			}
+			return nil, err
+		}
+		if ok {
+			resources = append(resources, resource)
+		}
+	}
+	return dedupeQwenImageResources(resources), nil
+}
+
 func resolveQwenImageResourceInput(source string) (qwenImageResource, bool, error) {
 	if resource, ok := parseQwenImageResourceString(source); ok {
 		if strings.TrimSpace(resource.ID) != "" {
@@ -76,6 +115,11 @@ func resolveQwenImageResourceInput(source string) (qwenImageResource, bool, erro
 		return qwenImageResource{}, false, fmt.Errorf("qianwen.com video image input requires a Qianwen material id; generate the image through QIANWEN-WEB-01 first or pass metadata.qianwen_material_id / metadata.qwen_resource")
 	}
 	return qwenImageResource{ID: strings.TrimSpace(source)}, true, nil
+}
+
+func isUploadableQwenImageSource(source string) bool {
+	source = strings.TrimSpace(source)
+	return isHTTPURL(source) || strings.HasPrefix(source, "data:") || looksLikeBase64Image(source)
 }
 
 func parseQwenImageResourceString(source string) (qwenImageResource, bool) {

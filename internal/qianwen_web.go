@@ -181,7 +181,7 @@ func (c *qwenWebClient) submitVideo(ctx context.Context, req VideoGenerationRequ
 		"resolution": resolution,
 		"size":       aspect,
 	}
-	resources, err := resolveQwenVideoInputResources(req)
+	resources, err := c.resolveVideoInputResources(ctx, req)
 	if err != nil {
 		return state, nil, err
 	}
