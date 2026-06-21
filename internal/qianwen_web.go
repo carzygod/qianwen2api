@@ -59,10 +59,11 @@ type qwenWebEvent struct {
 }
 
 type qwenRequestState struct {
-	ReqID     string                 `json:"req_id"`
-	SessionID string                 `json:"session_id"`
-	DeviceID  string                 `json:"device_id"`
-	Payload   map[string]interface{} `json:"payload"`
+	ReqID          string                 `json:"req_id"`
+	SessionID      string                 `json:"session_id"`
+	DeviceID       string                 `json:"device_id"`
+	Payload        map[string]interface{} `json:"payload"`
+	InputResources []qwenImageResource    `json:"input_resources,omitempty"`
 }
 
 type mediaPollResult struct {
@@ -180,11 +181,14 @@ func (c *qwenWebClient) submitVideo(ctx context.Context, req VideoGenerationRequ
 		"resolution": resolution,
 		"size":       aspect,
 	}
-	if strings.TrimSpace(req.FirstFrameImage) != "" {
-		params["first_frame_image"] = strings.TrimSpace(req.FirstFrameImage)
+	resources, err := resolveQwenVideoInputResources(req)
+	if err != nil {
+		return state, nil, err
 	}
-	if len(req.ReferenceImages) > 0 {
-		params["reference_images"] = req.ReferenceImages
+	if len(resources) > 0 {
+		state.InputResources = resources
+		params["attachments"] = qwenVideoAttachments(resources)
+		addQwenImageMessagesToPayload(state.Payload, resources)
 	}
 	state.Payload["ai_tool_scene"] = "zaodian_generate_video"
 	state.Payload["biz_data"] = mustJSONString(map[string]interface{}{

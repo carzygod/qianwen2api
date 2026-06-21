@@ -39,12 +39,16 @@ type qwenAIClient struct {
 }
 
 type qwenAIMediaResult struct {
-	URLs          []string                 `json:"urls"`
-	ChatID        string                   `json:"chat_id,omitempty"`
-	TaskID        string                   `json:"task_id,omitempty"`
-	RequestJSON   string                   `json:"request_json,omitempty"`
-	ResponseJSON  string                   `json:"response_json,omitempty"`
-	UpstreamFiles []map[string]interface{} `json:"upstream_files,omitempty"`
+	URLs              []string                 `json:"urls"`
+	ChatID            string                   `json:"chat_id,omitempty"`
+	TaskID            string                   `json:"task_id,omitempty"`
+	RequestJSON       string                   `json:"request_json,omitempty"`
+	ResponseJSON      string                   `json:"response_json,omitempty"`
+	UpstreamFiles     []map[string]interface{} `json:"upstream_files,omitempty"`
+	Resources         []qwenImageResource      `json:"resources,omitempty"`
+	InputResources    []qwenImageResource      `json:"input_resources,omitempty"`
+	InputRoute        string                   `json:"input_route,omitempty"`
+	PrimaryRouteError string                   `json:"primary_route_error,omitempty"`
 }
 
 type qwenAITokenCandidate struct {
@@ -332,14 +336,14 @@ func (c *qwenAIClient) generateImage(ctx context.Context, req ImageGenerationReq
 	aspect := normalizeImageAspect(req)
 	prompt := req.Prompt
 	if len(files) > 0 {
-		prompt = "请参考已上传的图片，结合用户需求直接生成图片，不要只输出文字。\n用户需求：" + req.Prompt
+		prompt = "Use the uploaded image(s) as visual reference. Generate image content for this request only.\nUser request: " + req.Prompt
 	} else {
-		prompt = "请直接生成图片，不要只输出文字。\n用户需求：" + req.Prompt
+		prompt = "Generate image content for this request only.\nUser request: " + req.Prompt
 	}
 	if req.NegativePrompt != "" {
-		prompt += "\n负面提示词：" + req.NegativePrompt
+		prompt += "\nNegative prompt: " + req.NegativePrompt
 	}
-	prompt += "\n画幅比例：" + aspect
+	prompt += "\nAspect ratio: " + aspect
 
 	chatID, err := c.createChat(ctx, model, "image_gen")
 	if err != nil {
@@ -388,12 +392,12 @@ func (c *qwenAIClient) generateVideo(ctx context.Context, req VideoGenerationReq
 	}
 	prompt := req.Prompt
 	if len(files) > 0 {
-		prompt = "请使用已上传图片作为首帧或视觉参考生成视频。\n用户需求：" + req.Prompt
+		prompt = "Use the uploaded image(s) as first-frame or visual reference for the video.\nUser request: " + req.Prompt
 	}
 	if req.NegativePrompt != "" {
-		prompt += "\n负面提示词：" + req.NegativePrompt
+		prompt += "\nNegative prompt: " + req.NegativePrompt
 	}
-	prompt += fmt.Sprintf("\n视频参数：%d 秒，%s，%s。", duration, resolution, aspect)
+	prompt += fmt.Sprintf("\nVideo parameters: %d seconds, %s, %s.", duration, resolution, aspect)
 
 	chatID, err := c.createChat(ctx, model, "t2v")
 	if err != nil {

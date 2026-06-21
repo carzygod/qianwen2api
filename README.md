@@ -31,6 +31,7 @@ This project does not use official Qwen API keys. It captures logged-in qianwen.
 | Video polling | `/v1/videos/{task_id}` plus legacy aliases |
 | Video cancel | `/v1/videos/{task_id}/cancel` plus legacy aliases |
 | NewAPI use | Can be added as an OpenAI-compatible channel for chat/image/video |
+| Image-to-video material handling | qianwen.com fallback uses official `attachments[].materialId`; generated images return `metadata.qianwen_material_id` for reuse |
 
 ### Models
 
@@ -86,6 +87,33 @@ curl http://127.0.0.1:18002/v1/videos \
     "ratio": "16:9"
   }'
 ```
+
+### Image-To-Video Notes
+
+When the qianwen.com fallback route is used, image-to-video requests must reference a Qianwen material id. The service records this automatically when an image is generated through `/v1/images/generations`.
+
+Image generation response example:
+
+```json
+{
+  "data": [
+    {
+      "url": "https://workspace-zb-cdn.qianwen.com/...png",
+      "metadata": {
+        "qianwen_material_id": "6ebee98cea4b4ca5aa5440a233e244ac",
+        "qwen_resource": {
+          "id": "6ebee98cea4b4ca5aa5440a233e244ac",
+          "url": "https://workspace-zb-cdn.qianwen.com/...png",
+          "width": 1024,
+          "height": 576
+        }
+      }
+    }
+  ]
+}
+```
+
+Use the returned `url` in `image_url`, or pass `metadata.qianwen_material_id` / `metadata.qwen_resource` explicitly. A bare external image URL that cannot be mapped to a Qianwen material id is rejected instead of being treated as an uploaded attachment.
 
 ## 中文
 

@@ -23,6 +23,10 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
+	if err := validateChatRequestText(req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_text_encoding", err.Error())
+		return
+	}
 
 	if req.Model == "" {
 		req.Model = "tongyi-qwen3-max-model"

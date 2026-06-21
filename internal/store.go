@@ -222,7 +222,39 @@ func (s *Store) migrate() error {
 			return fmt.Errorf("sqlite migration failed: %w", err)
 		}
 	}
+	if err := s.ensureColumn("qianwen_assets", "provider_resource_id", "TEXT"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn("qianwen_assets", "metadata_json", "TEXT"); err != nil {
+		return err
+	}
 	return nil
+}
+
+func (s *Store) ensureColumn(table, column, definition string) error {
+	rows, err := s.db.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, columnType string
+		var notNull int
+		var defaultValue interface{}
+		var pk int
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+		if name == column {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = s.db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, definition))
+	return err
 }
 
 func (s *Store) seedModels() error {
@@ -600,6 +632,56 @@ func (s *Store) IsTaskCancelled(id string) (bool, error) {
 		return false, err
 	}
 	return task.Status == "cancelled", nil
+}
+
+func (s *Store) RecordQianwenImageResource(taskID string, resource qwenImageResource) error {
+	if strings.TrimSpace(resource.ID) == "" && strings.TrimSpace(resource.URL) == "" {
+		return nil
+	}
+	_, err := s.db.Exec(`INSERT INTO qianwen_assets
+		(id, task_id, type, upstream_url, local_path, public_url, mime_type, size_bytes, provider_resource_id, metadata_json, created_at)
+		VALUES (?, ?, 'image', ?, '', ?, '', ?, ?, ?, ?)`,
+		uuid.New().String(), taskID, resource.URL, resource.URL, resource.FileSize, resource.ID, marshalCompact(resource), nowISO())
+	return err
+}
+
+func (s *Store) FindQianwenImageResource(source string) (*qwenImageResource, error) {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return nil, nil
+	}
+	row := s.db.QueryRow(`SELECT
+			COALESCE(provider_resource_id,''),
+			COALESCE(upstream_url,''),
+			COALESCE(public_url,''),
+			COALESCE(metadata_json,'')
+		FROM qianwen_assets
+		WHERE type='image' AND (provider_resource_id=? OR upstream_url=? OR public_url=?)
+		ORDER BY created_at DESC LIMIT 1`, source, source, source)
+	var id, upstreamURL, publicURL, metadataJSON string
+	if err := row.Scan(&id, &upstreamURL, &publicURL, &metadataJSON); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if metadataJSON != "" {
+		resources := extractQwenImageResources(json.RawMessage(metadataJSON))
+		if len(resources) > 0 {
+			resource := resources[0]
+			if resource.ID == "" {
+				resource.ID = id
+			}
+			if resource.URL == "" {
+				resource.URL = defaultString(publicURL, upstreamURL)
+			}
+			return &resource, nil
+		}
+	}
+	return &qwenImageResource{
+		ID:  id,
+		URL: defaultString(publicURL, upstreamURL),
+	}, nil
 }
 
 func scanAccount(scanner interface {

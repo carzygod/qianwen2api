@@ -64,6 +64,14 @@ func HandleImageGenerations(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "invalid_json", err.Error())
 		return
 	}
+	if err := validateHumanTextField("prompt", req.Prompt); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_text_encoding", err.Error())
+		return
+	}
+	if err := validateHumanTextField("negative_prompt", req.NegativePrompt); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_text_encoding", err.Error())
+		return
+	}
 	if strings.TrimSpace(req.Prompt) == "" {
 		writeAPIError(w, http.StatusBadRequest, "prompt_required", "prompt is required.")
 		return
@@ -100,9 +108,19 @@ func HandleImageGenerations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = AppStore.UpdateAccountStatus(account.ID, "valid", "", true)
-	data := make([]map[string]string, 0, len(urls))
+	for _, resource := range result.Resources {
+		_ = AppStore.RecordQianwenImageResource(result.TaskID, resource)
+	}
+	data := make([]map[string]interface{}, 0, len(urls))
 	for _, url := range urls {
-		data = append(data, map[string]string{"url": url})
+		item := map[string]interface{}{"url": url}
+		if resource, ok := resourceForURL(result.Resources, url); ok && resource.ID != "" {
+			item["metadata"] = map[string]interface{}{
+				"qianwen_material_id": resource.ID,
+				"qwen_resource":       qwenImageResourceMap(resource),
+			}
+		}
+		data = append(data, item)
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"created": time.Now().Unix(),
@@ -131,6 +149,7 @@ func generateImageWithAccount(ctx context.Context, account AccountRecord, req Im
 		if err == nil {
 			result, err := client.generateImage(ctx, req)
 			if err == nil {
+				result.InputRoute = "chat.qwen.ai"
 				return result, nil
 			}
 			aiErr = err
@@ -147,6 +166,9 @@ func generateImageWithAccount(ctx context.Context, account AccountRecord, req Im
 	if err != nil {
 		return nil, combineMediaFallbackError(aiErr, fmt.Errorf("qianwen.com image submit failed: %w", err))
 	}
+	if aiErr != nil {
+		LogWarn("chat.qwen.ai image route failed for account %s; falling back to qianwen.com web: %v", account.ID, aiErr)
+	}
 	urls := filterMediaURLs(extractURLs(events), "image")
 	if len(urls) == 0 {
 		result, err := client.pollMedia(ctx, state, "image", 130*time.Second)
@@ -156,12 +178,16 @@ func generateImageWithAccount(ctx context.Context, account AccountRecord, req Im
 		urls = result.URLs
 		events = result.Events
 	}
+	resources := extractQwenImageResources(events)
 	return &qwenAIMediaResult{
-		URLs:         urls,
-		ChatID:       state.SessionID,
-		TaskID:       state.ReqID,
-		RequestJSON:  marshalCompact(state),
-		ResponseJSON: marshalCompact(events),
+		URLs:              urls,
+		ChatID:            state.SessionID,
+		TaskID:            state.ReqID,
+		RequestJSON:       marshalCompact(state),
+		ResponseJSON:      marshalCompact(events),
+		Resources:         resources,
+		InputRoute:        "qianwen.com-web",
+		PrimaryRouteError: errorString(aiErr),
 	}, nil
 }
 
@@ -176,6 +202,10 @@ func HandleVideoGenerations(w http.ResponseWriter, r *http.Request) {
 	var req VideoGenerationRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeAPIError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	if err := validateVideoRequestText(req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_text_encoding", err.Error())
 		return
 	}
 	if strings.TrimSpace(req.Prompt) == "" {
@@ -219,6 +249,10 @@ func HandleVideoGenerationsSync(w http.ResponseWriter, r *http.Request) {
 	var req VideoGenerationRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeAPIError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	if err := validateVideoRequestText(req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_text_encoding", err.Error())
 		return
 	}
 	if strings.TrimSpace(req.Prompt) == "" {
@@ -288,16 +322,21 @@ func executeVideoTask(ctx context.Context, taskID string, req VideoGenerationReq
 	if message == "" {
 		message = "No video-capable qianwen.com login account is available."
 	}
-	_ = AppStore.UpdateTaskFailed(taskID, "qianwen_video_generation_failed", message, "")
+	if task, getErr := AppStore.GetTask(taskID); getErr != nil || task.Status != "failed" || task.UpstreamResponseJSON == "" {
+		_ = AppStore.UpdateTaskFailed(taskID, "qianwen_video_generation_failed", message, "")
+	}
 	return fmt.Errorf("%s", message)
 }
 
 func submitAndPollVideoWithAccount(ctx context.Context, taskID string, req VideoGenerationRequest, account AccountRecord) error {
 	_ = AppStore.UpdateTaskRunningWithAccount(taskID, account.ID, "", "", "", "")
 	result, err := generateVideoWithAccount(ctx, account, req)
+	if result != nil {
+		_ = AppStore.UpdateTaskRunningWithAccount(taskID, account.ID, result.TaskID, result.ChatID, result.RequestJSON, result.ResponseJSON)
+	}
 	if err != nil {
 		if result != nil {
-			_ = AppStore.UpdateTaskFailed(taskID, "qianwen_video_generation_failed", err.Error(), marshalCompact(result))
+			_ = AppStore.UpdateTaskFailed(taskID, "qianwen_video_generation_failed", err.Error(), result.ResponseJSON)
 		}
 		return fmt.Errorf("qianwen_video_submit_failed: %w", err)
 	}
@@ -326,6 +365,7 @@ func generateVideoWithAccount(ctx context.Context, account AccountRecord, req Vi
 		if err == nil {
 			result, err := client.generateVideo(ctx, req)
 			if err == nil {
+				result.InputRoute = "chat.qwen.ai"
 				return result, nil
 			}
 			aiErr = err
@@ -342,6 +382,9 @@ func generateVideoWithAccount(ctx context.Context, account AccountRecord, req Vi
 	if err != nil {
 		return nil, combineMediaFallbackError(aiErr, fmt.Errorf("qianwen.com video submit failed: %w", err))
 	}
+	if aiErr != nil {
+		LogWarn("chat.qwen.ai video route failed for account %s; falling back to qianwen.com web: %v", account.ID, aiErr)
+	}
 	urls := filterMediaURLs(extractURLs(events), "video")
 	if len(urls) == 0 {
 		result, err := client.pollMedia(ctx, state, "video", 7*time.Minute)
@@ -352,12 +395,22 @@ func generateVideoWithAccount(ctx context.Context, account AccountRecord, req Vi
 		events = result.Events
 	}
 	return &qwenAIMediaResult{
-		URLs:         urls,
-		ChatID:       state.SessionID,
-		TaskID:       state.ReqID,
-		RequestJSON:  marshalCompact(state),
-		ResponseJSON: marshalCompact(events),
+		URLs:              urls,
+		ChatID:            state.SessionID,
+		TaskID:            state.ReqID,
+		RequestJSON:       marshalCompact(state),
+		ResponseJSON:      marshalCompact(events),
+		InputResources:    state.InputResources,
+		InputRoute:        "qianwen.com-web",
+		PrimaryRouteError: errorString(aiErr),
 	}, nil
+}
+
+func errorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 func combineMediaFallbackError(primary, fallback error) error {
