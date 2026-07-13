@@ -297,6 +297,7 @@ pre.out{max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-wor
               <span :class="['badge',statusClass(selectedAccount.status)]">{{statusText(selectedAccount.status)}}</span>
             </div>
             <div class="actions" style="margin-bottom:16px">
+              <button class="btn primary" @click="startMaintenance(selectedAccount.id)">检修</button>
               <button class="btn primary" @click="testAccount(selectedAccount.id,'chat')" :disabled="accountProbe.loading">测对话</button>
               <button class="btn" @click="testAccount(selectedAccount.id,'image')" :disabled="accountProbe.loading">测生图</button>
               <button class="btn" @click="testAccount(selectedAccount.id,'video')" :disabled="accountProbe.loading">测视频</button>
@@ -348,9 +349,10 @@ pre.out{max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-wor
               <span :class="['badge',statusClass(selectedSession.status)]">{{statusText(selectedSession.status)}}</span>
             </div>
             <div class="actions" style="margin-bottom:16px">
+              <button v-if="selectedSession.novnc_url" class="btn" @click="openNoVNC(selectedSession.novnc_url)">noVNC</button>
               <button class="btn" @click="clickLoginEntry(selectedSession.id)">点击登录入口</button>
               <button class="btn" @click="openSessionModal(selectedSession.id)">打开扫码窗口</button>
-              <button class="btn" @click="refreshSession(selectedSession.id)">刷新二维码</button>
+              <button v-if="selectedSession.mode!=='maintenance'" class="btn" @click="refreshSession(selectedSession.id)">刷新二维码</button>
               <button class="btn primary" @click="captureSession(selectedSession.id)">确认扫码</button>
               <button class="btn danger" @click="deleteSession(selectedSession.id)">删除会话</button>
             </div>
@@ -602,6 +604,15 @@ createApp({
     function selectAccount(id){selectedId.value=id;accountProbe.status="";accountProbe.message="";accountProbe.capability="";accountProbe.response="";}
     function selectSession(id){selectedSessionId.value=id;screenshotTick.value++;}
     function openSessionModal(id){if(id){selectedSessionId.value=id;}screenshotTick.value++;scanModal.value=true;}
+    function openNoVNC(url){if(url) window.open(url,"_blank","noopener");}
+    async function startMaintenance(id){
+      try{
+        const data=await api("/accounts/"+encodeURIComponent(id)+"/maintenance/start",{method:"POST",body:"{}"});
+        await loadSessions();
+        if(data.data && data.data.id){openSessionModal(data.data.id);openNoVNC(data.data.novnc_url);}
+        showToast("账号检修浏览器已启动。");
+      }catch(err){showToast(err.message);}
+    }
     function closeScanModal(){scanModal.value=false;}
     function openLatestSessionModal(){if(sessions.value.length){openSessionModal(sessions.value[0].id);showToast("已打开最新扫码会话。");}else{showToast("暂无扫码会话，请先新增账号。");}}
     function openAdd(){newAccount.name="";addModal.value=true;setTimeout(function(){const input=document.querySelector(".modal input");if(input) input.focus();},80);}
@@ -702,7 +713,7 @@ createApp({
     function fmtClock(ts){return ts ? new Date(ts*1000).toLocaleTimeString("zh-CN",{hour12:false}) : "-";}
     onMounted(function(){refreshAll();pollTimer=setInterval(function(){if(tab.value==="logs"){loadLogs().catch(function(){});} if(tab.value==="accounts" || scanModal.value){loadSessions().catch(function(){});}},5000);});
     onBeforeUnmount(function(){if(pollTimer) clearInterval(pollTimer);if(toast.timer) clearTimeout(toast.timer);});
-    return{tabs,tab,title,busy,accounts,sessions,tasks,models,logs,summary,serviceKey,apiBase,selectedId,selectedSessionId,selectedAccount,selectedSession,validCount,activeSessionCount,taskBreakdown,defaultChatModel,addModal,scanModal,newAccount,accountProbe,test,toast,adminKey,locationOrigin,refreshAll,loadAccounts,loadSessions,selectAccount,selectSession,openSessionModal,closeScanModal,openLatestSessionModal,openAdd,closeAdd,createAccount,testAccount,syncQuota,deleteAccount,clickLoginEntry,refreshSession,captureSession,deleteSession,runTest,copy,screenshotUrl,capabilityList,formatCaps,modelKind,statusClass,statusText,typeText,capText,initial,isProtectedAccount,fmtClock,saveServiceKey};
+    return{tabs,tab,title,busy,accounts,sessions,tasks,models,logs,summary,serviceKey,apiBase,selectedId,selectedSessionId,selectedAccount,selectedSession,validCount,activeSessionCount,taskBreakdown,defaultChatModel,addModal,scanModal,newAccount,accountProbe,test,toast,adminKey,locationOrigin,refreshAll,loadAccounts,loadSessions,selectAccount,selectSession,openSessionModal,openNoVNC,startMaintenance,closeScanModal,openLatestSessionModal,openAdd,closeAdd,createAccount,testAccount,syncQuota,deleteAccount,clickLoginEntry,refreshSession,captureSession,deleteSession,runTest,copy,screenshotUrl,capabilityList,formatCaps,modelKind,statusClass,statusText,typeText,capText,initial,isProtectedAccount,fmtClock,saveServiceKey};
   }
 }).mount("#app");
 </script>

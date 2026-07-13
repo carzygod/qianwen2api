@@ -61,6 +61,18 @@ docker run -d --name qianwen-web-01 \
   qianwen-web-01:latest
 ```
 
+## 账户检修（私有 noVNC）
+
+`Dockerfile.novnc` 在原有服务结构外增加 Xvfb、x11vnc 和 noVNC。每个账户使用
+`DATA_DIR/account-chrome-profiles/<account-id>` 独立 profile；检修租约活动时该账户
+不会参与正常调度。容器环境需设置 `VNC_PASSWORD`，并将容器 `6080` 端口只映射到
+宿主机 `127.0.0.1`。`NOVNC_URL` 用于后台和聚合层返回操作入口，noVNC 模式会强制
+`BROWSER_HEADLESS=false`。
+
+维护接口位于 `/api/accounts/{id}/maintenance`，支持 `start`、`heartbeat`、`stop`、
+`validate`；登录状态通过 `/api/login-sessions/{lease-owner}/capture` 捕获。捕获后应先
+结束检修，再执行账号测活。不要自动删除 Chromium `Singleton*` 锁文件。
+
 Open `http://127.0.0.1:18002/admin?key=change-me-admin-key`.
 
 ### Add Accounts

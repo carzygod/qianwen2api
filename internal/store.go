@@ -151,6 +151,16 @@ func (s *Store) migrate() error {
 			metadata_json TEXT,
 			created_at TEXT NOT NULL
 		);`,
+		`CREATE TABLE IF NOT EXISTS qianwen_account_maintenance (
+			account_id TEXT PRIMARY KEY,
+			state TEXT NOT NULL DEFAULT 'active',
+			lease_owner TEXT,
+			lease_expires_at TEXT,
+			profile_path TEXT,
+			last_error TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);`,
 		`CREATE TABLE IF NOT EXISTS qianwen_models (
 			id TEXT PRIMARY KEY,
 			type TEXT NOT NULL,
@@ -324,7 +334,9 @@ func (s *Store) ListModels() ([]ModelRecord, error) {
 
 func (s *Store) CreateAccount(a *AccountRecord) error {
 	now := nowISO()
-	a.ID = uuid.New().String()
+	if strings.TrimSpace(a.ID) == "" {
+		a.ID = uuid.New().String()
+	}
 	a.Status = defaultString(a.Status, "unknown")
 	a.Type = defaultString(a.Type, "login_cookie")
 	a.CreatedAt = now
@@ -402,6 +414,11 @@ func (s *Store) DeleteAccount(id string) (*AccountDeleteResult, error) {
 		}
 		return nil, err
 	}
+	if active, err := s.IsAccountInMaintenance(id); err != nil {
+		return nil, err
+	} else if active {
+		return nil, errors.New("account has an active maintenance lease")
+	}
 
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -426,9 +443,13 @@ func (s *Store) DeleteAccount(id string) (*AccountDeleteResult, error) {
 	}
 	affected, _ := res.RowsAffected()
 	result.Deleted = affected > 0
+	if _, err := tx.Exec(`DELETE FROM qianwen_account_maintenance WHERE account_id=?`, id); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	_ = removeAccountProfile(id)
 	return result, nil
 }
 
@@ -463,6 +484,13 @@ func (s *Store) SelectAccountForCapability(capability string) (*AccountRecord, e
 		if !a.Enabled || a.Status != "valid" {
 			continue
 		}
+		inMaintenance, err := s.IsAccountInMaintenance(a.ID)
+		if err != nil {
+			return nil, err
+		}
+		if inMaintenance {
+			continue
+		}
 		if accountSupportsCapability(a, capability) {
 			return &a, nil
 		}
@@ -488,7 +516,14 @@ func (s *Store) ListRunnableAccountsForCapability(capability string) ([]AccountR
 	}
 	var runnable []AccountRecord
 	for _, a := range accounts {
-		if !a.Enabled || a.Status == "invalid" {
+		if !a.Enabled || a.Status != "valid" {
+			continue
+		}
+		inMaintenance, err := s.IsAccountInMaintenance(a.ID)
+		if err != nil {
+			return nil, err
+		}
+		if inMaintenance {
 			continue
 		}
 		if strings.TrimSpace(a.CookieJSON) == "" && strings.TrimSpace(a.CookieString) == "" {
