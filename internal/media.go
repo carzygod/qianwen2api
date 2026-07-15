@@ -101,6 +101,10 @@ func HandleImageGenerations(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "account_select_failed", err.Error())
 		return
 	}
+	if err := AppStore.BeginAccountAttempt(account.ID); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "account_state_update_failed", err.Error())
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
@@ -113,7 +117,9 @@ func HandleImageGenerations(w http.ResponseWriter, r *http.Request) {
 	urls := result.URLs
 	urls = limitURLs(urls, req.N)
 	if len(urls) == 0 {
-		writeAPIError(w, http.StatusBadGateway, "qianwen_image_empty_result", "Qianwen image generation completed without a media URL.")
+		err := fmt.Errorf("Qianwen image generation completed without a media URL")
+		recordQianwenProviderFailure(account.ID, err)
+		writeAPIError(w, http.StatusBadGateway, "qianwen_image_empty_result", err.Error())
 		return
 	}
 	_ = AppStore.UpdateAccountStatus(account.ID, "valid", "", true)
@@ -143,7 +149,11 @@ func imageCandidateAccount(req ImageGenerationRequest) (*AccountRecord, error) {
 		if err != nil {
 			return nil, err
 		}
-		if !account.Enabled || !accountSupportsCapability(*account, "image") {
+		runnable, err := AppStore.IsAccountRunnable(*account, "image")
+		if err != nil {
+			return nil, err
+		}
+		if !runnable {
 			return nil, fmt.Errorf("selected account is not enabled for image")
 		}
 		return account, nil
@@ -338,6 +348,9 @@ func executeVideoTask(ctx context.Context, taskID string, req VideoGenerationReq
 }
 
 func submitAndPollVideoWithAccount(ctx context.Context, taskID string, req VideoGenerationRequest, account AccountRecord) error {
+	if err := AppStore.BeginAccountAttempt(account.ID); err != nil {
+		return fmt.Errorf("account state update failed: %w", err)
+	}
 	_ = AppStore.UpdateTaskRunningWithAccount(taskID, account.ID, "", "", "", "")
 	result, err := generateVideoWithAccount(ctx, account, req)
 	if result != nil {
@@ -699,7 +712,11 @@ func videoCandidateAccounts(req VideoGenerationRequest) ([]AccountRecord, error)
 		if err != nil {
 			return nil, err
 		}
-		if !account.Enabled || !accountSupportsCapability(*account, "video") {
+		runnable, err := AppStore.IsAccountRunnable(*account, "video")
+		if err != nil {
+			return nil, err
+		}
+		if !runnable {
 			return nil, sql.ErrNoRows
 		}
 		return []AccountRecord{*account}, nil

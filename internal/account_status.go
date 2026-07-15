@@ -8,10 +8,10 @@ func recordQianwenProviderFailure(accountID string, err error) {
 	}
 	message := err.Error()
 	if looksQianwenAccountStateError(message) {
-		_ = AppStore.UpdateAccountStatus(accountID, "invalid", message, false)
+		_ = AppStore.UpdateAccountRuntimeFailure(accountID, accountStatusInvalid, message)
 		return
 	}
-	_ = AppStore.RecordAccountTaskFailure(accountID, message)
+	_ = AppStore.UpdateAccountRuntimeFailure(accountID, accountStatusUnknown, message)
 }
 
 func looksQianwenAccountStateError(message string) bool {
@@ -26,6 +26,7 @@ func looksQianwenAccountStateError(message string) bool {
 		"unauthenticated",
 		"not authenticated",
 		"not logged",
+		"logged out",
 		"login required",
 		"cookie",
 		"xsrf",

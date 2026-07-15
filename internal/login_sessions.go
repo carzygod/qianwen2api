@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -373,6 +372,10 @@ func (s *LoginSession) run(generation uint64) {
 		s.setStatus("failed", "创建登录 profile 目录失败："+err.Error())
 		return
 	}
+	if err := ensureChromiumRuntimeDirs(); err != nil {
+		s.setStatus("failed", "Chromium runtime is unavailable: "+err.Error())
+		return
+	}
 
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", Cfg.BrowserHeadless),
@@ -387,10 +390,6 @@ func (s *LoginSession) run(generation uint64) {
 		chromedp.WindowSize(1280, 980),
 		chromedp.UserAgent(generateRandomUserAgent()),
 	)
-	if runtime.GOOS != "windows" {
-		opts = append(opts, chromedp.Flag("single-process", true))
-	}
-
 	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
 	ctx, ctxCancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(func(format string, args ...interface{}) {
 		LogDebug("[qianwen-login] "+format, args...)

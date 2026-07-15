@@ -13,13 +13,15 @@ import (
 const defaultMaintenanceLease = 15 * time.Minute
 
 type AccountMaintenance struct {
-	AccountID      string `json:"account_id"`
-	State          string `json:"state"`
-	LeaseOwner     string `json:"lease_owner,omitempty"`
-	LeaseExpiresAt string `json:"lease_expires_at,omitempty"`
-	ProfilePath    string `json:"profile_path"`
-	LastError      string `json:"last_error,omitempty"`
-	UpdatedAt      string `json:"updated_at"`
+	AccountID         string `json:"account_id"`
+	State             string `json:"state"`
+	StateScope        string `json:"state_scope"`
+	MaintenanceActive bool `json:"maintenance_active"`
+	LeaseOwner        string `json:"lease_owner,omitempty"`
+	LeaseExpiresAt    string `json:"lease_expires_at,omitempty"`
+	ProfilePath       string `json:"profile_path"`
+	LastError         string `json:"last_error,omitempty"`
+	UpdatedAt         string `json:"updated_at"`
 }
 
 func accountProfilePath(accountID string) string {
@@ -124,7 +126,10 @@ func (s *Store) GetAccountMaintenance(accountID string) (*AccountMaintenance, er
 		Scan(&record.AccountID, &record.State, &record.LeaseOwner, &record.LeaseExpiresAt,
 			&record.ProfilePath, &record.LastError, &record.UpdatedAt)
 	if err == sql.ErrNoRows {
-		return &AccountMaintenance{AccountID: accountID, State: "active", ProfilePath: accountProfilePath(accountID)}, nil
+		return &AccountMaintenance{
+			AccountID: accountID, State: "active", StateScope: "maintenance",
+			MaintenanceActive: false, ProfilePath: accountProfilePath(accountID),
+		}, nil
 	}
 	if err != nil {
 		return nil, err
@@ -148,6 +153,8 @@ func (s *Store) GetAccountMaintenance(accountID string) (*AccountMaintenance, er
 			record.LeaseExpiresAt = ""
 		}
 	}
+	record.StateScope = "maintenance"
+	record.MaintenanceActive = record.State == "maintenance" || record.State == "validating"
 	return &record, nil
 }
 

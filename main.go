@@ -33,6 +33,7 @@ func main() {
 	}
 
 	http.HandleFunc("/health", internal.HandleHealth)
+	http.HandleFunc("/ready", internal.HandleReadiness)
 	http.HandleFunc("/auth/status", internal.HandleAuthStatus)
 	http.HandleFunc("/auth/qr", internal.HandleAuthQR)
 	http.HandleFunc("/auth/login", internal.HandleAuthLogin)

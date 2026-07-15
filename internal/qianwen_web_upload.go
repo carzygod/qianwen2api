@@ -166,6 +166,9 @@ func (c *qwenWebClient) uploadImageMaterialDirect(ctx context.Context, input qwe
 func (c *qwenWebClient) uploadImageMaterialViaBrowser(ctx context.Context, input qwenAIInputFile) (qwenImageResource, error) {
 	uploadCtx, cancel := context.WithTimeout(ctx, 150*time.Second)
 	defer cancel()
+	if err := ensureChromiumRuntimeDirs(); err != nil {
+		return qwenImageResource{}, err
+	}
 
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", true),
@@ -177,7 +180,6 @@ func (c *qwenWebClient) uploadImageMaterialViaBrowser(ctx context.Context, input
 		chromedp.Flag("no-first-run", true),
 		chromedp.Flag("hide-scrollbars", true),
 		chromedp.Flag("mute-audio", true),
-		chromedp.Flag("single-process", true),
 		chromedp.UserAgent(c.userAgent),
 	)
 	allocCtx, allocCancel := chromedp.NewExecAllocator(uploadCtx, opts...)

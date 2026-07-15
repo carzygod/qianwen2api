@@ -12,21 +12,22 @@ import (
 )
 
 type Config struct {
-	Host              string
-	Port              string
-	PoolSize          int
-	AuthKey           string
-	AdminKey          string
-	LogLevel          string
-	RefreshPeriod     time.Duration
-	DataDir           string
-	DatabasePath      string
-	PublicBaseURL     string
-	DefaultChatModel  string
-	DefaultImageModel string
-	DefaultVideoModel string
-	BrowserHeadless   bool
-	NoVNCURL          string
+	Host               string
+	Port               string
+	PoolSize           int
+	AuthKey            string
+	AdminKey           string
+	LogLevel           string
+	RefreshPeriod      time.Duration
+	DataDir            string
+	DatabasePath       string
+	PublicBaseURL      string
+	DefaultChatModel   string
+	DefaultImageModel  string
+	DefaultVideoModel  string
+	BrowserHeadless    bool
+	NoVNCURL           string
+	AccountValidityTTL time.Duration
 }
 
 var Cfg *Config
@@ -97,23 +98,30 @@ func LoadConfig() {
 	}
 	browserHeadless := strings.ToLower(strings.TrimSpace(os.Getenv("BROWSER_HEADLESS"))) != "false"
 	noVNCURL := strings.TrimSpace(os.Getenv("NOVNC_URL"))
+	accountValidityHours := 24
+	if value := strings.TrimSpace(os.Getenv("ACCOUNT_VALIDITY_HOURS")); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil && parsed > 0 {
+			accountValidityHours = parsed
+		}
+	}
 
 	Cfg = &Config{
-		Host:              host,
-		Port:              port,
-		PoolSize:          poolSize,
-		AuthKey:           authKey,
-		AdminKey:          adminKey,
-		LogLevel:          logLevel,
-		RefreshPeriod:     time.Duration(refreshHours) * time.Hour,
-		DataDir:           dataDir,
-		DatabasePath:      databasePath,
-		PublicBaseURL:     publicBaseURL,
-		DefaultChatModel:  defaultChatModel,
-		DefaultImageModel: defaultImageModel,
-		DefaultVideoModel: defaultVideoModel,
-		BrowserHeadless:   browserHeadless,
-		NoVNCURL:          noVNCURL,
+		Host:               host,
+		Port:               port,
+		PoolSize:           poolSize,
+		AuthKey:            authKey,
+		AdminKey:           adminKey,
+		LogLevel:           logLevel,
+		RefreshPeriod:      time.Duration(refreshHours) * time.Hour,
+		DataDir:            dataDir,
+		DatabasePath:       databasePath,
+		PublicBaseURL:      publicBaseURL,
+		DefaultChatModel:   defaultChatModel,
+		DefaultImageModel:  defaultImageModel,
+		DefaultVideoModel:  defaultVideoModel,
+		BrowserHeadless:    browserHeadless,
+		NoVNCURL:           noVNCURL,
+		AccountValidityTTL: time.Duration(accountValidityHours) * time.Hour,
 	}
 }
 

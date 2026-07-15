@@ -111,6 +111,14 @@ func InitStore() error {
 		_ = db.Close()
 		return err
 	}
+	if err := store.RecoverInterruptedAccountChecks(); err != nil {
+		_ = db.Close()
+		return fmt.Errorf("recover interrupted account checks: %w", err)
+	}
+	if err := store.refreshAccountReadiness(); err != nil {
+		_ = db.Close()
+		return fmt.Errorf("expire stale accounts: %w", err)
+	}
 	AppStore = store
 	return nil
 }
@@ -365,6 +373,9 @@ func (s *Store) CreateAccount(a *AccountRecord) error {
 }
 
 func (s *Store) ListAccounts() ([]AccountRecord, error) {
+	if err := s.refreshAccountReadiness(); err != nil {
+		return nil, err
+	}
 	rows, err := s.db.Query(`SELECT id, name, type, status, enabled, priority, weight,
 		COALESCE(cookie_json,''), COALESCE(cookie_string,''), COALESCE(local_storage_json,''), COALESCE(xsrf_token,''), COALESCE(device_id,''),
 		COALESCE(user_agent,''), COALESCE(proxy_url,''), COALESCE(capabilities_json,''), COALESCE(quota_json,''), COALESCE(last_error,''),
@@ -387,6 +398,9 @@ func (s *Store) ListAccounts() ([]AccountRecord, error) {
 }
 
 func (s *Store) GetAccount(id string) (*AccountRecord, error) {
+	if err := s.refreshAccountReadiness(); err != nil {
+		return nil, err
+	}
 	row := s.db.QueryRow(`SELECT id, name, type, status, enabled, priority, weight,
 		COALESCE(cookie_json,''), COALESCE(cookie_string,''), COALESCE(local_storage_json,''), COALESCE(xsrf_token,''), COALESCE(device_id,''),
 		COALESCE(user_agent,''), COALESCE(proxy_url,''), COALESCE(capabilities_json,''), COALESCE(quota_json,''), COALESCE(last_error,''),
@@ -481,17 +495,11 @@ func (s *Store) SelectAccountForCapability(capability string) (*AccountRecord, e
 		return nil, err
 	}
 	for _, a := range accounts {
-		if !a.Enabled || a.Status != "valid" {
-			continue
-		}
-		inMaintenance, err := s.IsAccountInMaintenance(a.ID)
+		isRunnable, err := s.IsAccountRunnable(a, capability)
 		if err != nil {
 			return nil, err
 		}
-		if inMaintenance {
-			continue
-		}
-		if accountSupportsCapability(a, capability) {
+		if isRunnable {
 			return &a, nil
 		}
 	}
@@ -516,20 +524,11 @@ func (s *Store) ListRunnableAccountsForCapability(capability string) ([]AccountR
 	}
 	var runnable []AccountRecord
 	for _, a := range accounts {
-		if !a.Enabled || a.Status != "valid" {
-			continue
-		}
-		inMaintenance, err := s.IsAccountInMaintenance(a.ID)
+		isRunnable, err := s.IsAccountRunnable(a, capability)
 		if err != nil {
 			return nil, err
 		}
-		if inMaintenance {
-			continue
-		}
-		if strings.TrimSpace(a.CookieJSON) == "" && strings.TrimSpace(a.CookieString) == "" {
-			continue
-		}
-		if accountSupportsCapability(a, capability) {
+		if isRunnable {
 			runnable = append(runnable, a)
 		}
 	}

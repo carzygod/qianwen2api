@@ -24,7 +24,8 @@ This project does not use official Qwen API keys. It captures logged-in qianwen.
 | QR lifecycle | Create, refresh, confirm, delete; delete closes Chromium |
 | Account pool | Multiple qianwen.com Web accounts |
 | Account delete | Removes the SQLite account row, account events, detaches historical task ownership, and closes captured QR sessions |
-| Account test | Sends a real default chat request and requires model output |
+| Account test | Requires a strong login cookie, confirms a non-empty official qianwen.com user identity, then requires real model output |
+| Health | `/health` is liveness; `/ready` requires a fresh runnable account or ready guest pool |
 | Chat API | `/v1/chat/completions` |
 | Image API | `/v1/images/generations` |
 | Video API | `/v1/videos`, `/v1/video/generations`, `/v1/videos/generations` |
@@ -55,6 +56,7 @@ docker run -d --name qianwen-web-01 \
   -e AUTH_KEY=change-me-api-key \
   -e ADMIN_KEY=change-me-admin-key \
   -e POOL_SIZE=0 \
+  -e ACCOUNT_VALIDITY_HOURS=24 \
   -e DATA_DIR=/app/data \
   -e DATABASE_PATH=/app/data/qianwen-web-01.sqlite \
   -v "$PWD/data:/app/data" \
@@ -84,6 +86,8 @@ Open `http://127.0.0.1:18002/admin?key=change-me-admin-key`.
 5. Wait until qianwen.com is logged in.
 6. Click `确认扫码`.
 7. Run account `测活`; only accounts with real model output should receive traffic.
+
+Successful account validation expires after `ACCOUNT_VALIDITY_HOURS` (24 by default). An interrupted test or provider call is recovered as `unknown` after restart instead of retaining an old `valid` state.
 
 ### API Example
 
@@ -202,7 +206,8 @@ QIANWEN-WEB-01 是 gen2api 使用的 qianwen.com / 通义千问 Web 反代维护
 | 账号导入 | 服务端 Chromium 二维码扫码登录 |
 | 二维码生命周期 | 创建、刷新、确认、删除；删除会关闭 Chromium |
 | 账号池 | 多个 qianwen.com Web 登录账号 |
-| 账号测试 | 发送真实默认对话模型请求，拿到模型返回才算成功 |
+| 账号测试 | 先检查强登录 Cookie 和千问官方页面非空用户身份，再发送真实默认对话模型请求 |
+| 健康检查 | `/health` 只表示进程存活；`/ready` 要求存在有效期内的可运行账号或可用游客池 |
 | 对话接口 | `/v1/chat/completions` |
 | 生图接口 | `/v1/images/generations` |
 | 生视频接口 | `/v1/videos`、`/v1/video/generations`、`/v1/videos/generations` |
@@ -233,6 +238,7 @@ docker run -d --name qianwen-web-01 \
   -e AUTH_KEY=change-me-api-key \
   -e ADMIN_KEY=change-me-admin-key \
   -e POOL_SIZE=0 \
+  -e ACCOUNT_VALIDITY_HOURS=24 \
   -e DATA_DIR=/app/data \
   -e DATABASE_PATH=/app/data/qianwen-web-01.sqlite \
   -v "$PWD/data:/app/data" \
@@ -250,6 +256,8 @@ docker run -d --name qianwen-web-01 \
 5. 等待页面进入 qianwen.com 登录后状态。
 6. 点击 `确认扫码` 保存账号。
 7. 点击账号 `测活`，只有真实模型请求返回成功的账号才进入可用路由。
+
+账号成功状态默认有效 24 小时，可通过 `ACCOUNT_VALIDITY_HOURS` 调整。测活或真实请求被进程重启中断时，账号会恢复为 `unknown`，不会继续保留旧的 `valid`。
 
 ### 调用示例
 
@@ -346,7 +354,8 @@ QIANWEN-WEB-01 — поддерживаемый Web reverse-proxy для qianwen
 | QR lifecycle | create, refresh, confirm, delete; delete закрывает Chromium |
 | Account pool | Несколько qianwen.com Web аккаунтов |
 | Account delete | Removes the SQLite account row, account events, detaches historical task ownership, and closes captured QR sessions |
-| Account test | Реальный default chat request с проверкой ответа модели |
+| Account test | Requires strong login cookies, a non-empty qianwen.com identity, and a real model response |
+| Health | `/health` is liveness; `/ready` requires a fresh runnable account or ready guest pool |
 | Chat API | `/v1/chat/completions` |
 | Image API | `/v1/images/generations` |
 | Video API | `/v1/videos`, `/v1/video/generations`, `/v1/videos/generations` |
@@ -377,6 +386,7 @@ docker run -d --name qianwen-web-01 \
   -e AUTH_KEY=change-me-api-key \
   -e ADMIN_KEY=change-me-admin-key \
   -e POOL_SIZE=0 \
+  -e ACCOUNT_VALIDITY_HOURS=24 \
   -e DATA_DIR=/app/data \
   -e DATABASE_PATH=/app/data/qianwen-web-01.sqlite \
   -v "$PWD/data:/app/data" \

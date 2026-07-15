@@ -15,16 +15,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates chromium dumb-init fluxbox fonts-wqy-zenhei novnc websockify x11vnc xvfb \
     && rm -rf /var/lib/apt/lists/*
 
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN groupadd -r appuser && useradd -r -m -d /home/appuser -g appuser appuser
 WORKDIR /app
 COPY --from=builder /app/qianwen2api /app/qianwen2api
 COPY scripts/novnc-entrypoint.sh /usr/local/bin/novnc-entrypoint.sh
 RUN chmod +x /usr/local/bin/novnc-entrypoint.sh \
-    && mkdir -p /app/data /tmp/qianwen-novnc \
-    && chown -R appuser:appuser /app /tmp/qianwen-novnc
+    && mkdir -p /app/data /tmp/qianwen-novnc /tmp/.X11-unix \
+        /home/appuser/.config/chromium/'Crash Reports' \
+        /home/appuser/.cache/chromium \
+    && chmod 1777 /tmp/.X11-unix \
+    && chown -R appuser:appuser /app /tmp/qianwen-novnc /home/appuser
 
 USER appuser
-ENV HOST=0.0.0.0 PORT=8000 DATA_DIR=/app/data \
+ENV HOME=/home/appuser XDG_CONFIG_HOME=/home/appuser/.config XDG_CACHE_HOME=/home/appuser/.cache \
+    HOST=0.0.0.0 PORT=8000 DATA_DIR=/app/data \
     DATABASE_PATH=/app/data/qianwen-web-01.sqlite BROWSER_HEADLESS=false
 EXPOSE 8000 6080
 ENTRYPOINT ["/usr/bin/dumb-init", "--", "/usr/local/bin/novnc-entrypoint.sh"]

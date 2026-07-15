@@ -148,7 +148,7 @@ h3{font-size:15px}
 .badge.valid,.badge.succeeded,.badge.captured,.badge.login_detected{background:rgba(63,229,154,.14);color:var(--green)}
 .badge.hot,.badge.qianwen_qr{background:rgba(54,231,255,.12);color:var(--cyan)}
 .badge.invalid,.badge.failed,.badge.capture_failed,.badge.expired,.badge.error{background:rgba(255,102,117,.14);color:var(--red)}
-.badge.unknown,.badge.starting,.badge.opening,.badge.waiting_scan,.badge.disabled,.badge.processing,.badge.queued{background:rgba(255,209,102,.13);color:var(--amber)}
+.badge.unknown,.badge.stale,.badge.testing,.badge.checking,.badge.starting,.badge.opening,.badge.waiting_scan,.badge.disabled,.badge.processing,.badge.queued{background:rgba(255,209,102,.13);color:var(--amber)}
 .detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px}
 .detail-title{display:flex;align-items:center;gap:12px}
 .avatar{width:46px;height:46px;border-radius:var(--radius-md);display:grid;place-items:center;background:var(--grad);color:#00131a;font-weight:900}
@@ -704,7 +704,7 @@ createApp({
     function formatCaps(value){try{const caps=JSON.parse(value || "{}");const keys=Object.keys(caps).filter(function(key){return !!caps[key];});return keys.length ? keys.map(capText).join(" / ") : "{}";}catch(err){return value || "-";}}
     function modelKind(modelID){const found=models.value.find(function(model){return model.id===modelID;});if(found && found.type==="image") return "生图";if(found && found.type==="video") return "生视频";const lower=String(modelID || "").toLowerCase();if(lower.indexOf("image")>=0) return "生图";if(lower.indexOf("happyhorse")>=0 || lower.indexOf("video")>=0) return "生视频";return "对话";}
     function statusClass(value){const v=value || "unknown";if(["valid","succeeded","captured","login_detected"].indexOf(v)>=0) return v;if(["invalid","failed","capture_failed","expired","error"].indexOf(v)>=0) return v;return v;}
-    function statusText(value){const map={valid:"可用",unknown:"未知",invalid:"无效",succeeded:"成功",failed:"失败",captured:"已捕获",login_detected:"检测到登录",capture_failed:"捕获失败",expired:"已过期",starting:"启动中",opening:"打开中",waiting_scan:"等待扫码",processing:"处理中",queued:"排队中"};return map[value] || value || "未知";}
+    function statusText(value){const map={valid:"可用",stale:"测活已过期",testing:"测活中",checking:"调用检查中",unknown:"未知",invalid:"无效",succeeded:"成功",failed:"失败",captured:"已捕获",login_detected:"检测到登录",capture_failed:"捕获失败",expired:"已过期",starting:"启动中",opening:"打开中",waiting_scan:"等待扫码",processing:"处理中",queued:"排队中"};return map[value] || value || "未知";}
     function typeText(value){const map={qianwen_qr:"扫码登录",login_cookie:"扫码捕获",guest:"游客池"};return map[value] || value || "未知";}
     function capText(value){const map={chat:"对话",image:"生图",video:"生视频"};return map[value] || value;}
     function breakdown(obj){const keys=Object.keys(obj || {});if(!keys.length) return "暂无";return keys.map(function(key){return key+":"+obj[key];}).join(" / ");}

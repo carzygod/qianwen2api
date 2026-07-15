@@ -31,7 +31,10 @@ func TestAccount(accountID, capability string) (*AccountTestResult, error) {
 	result := &AccountTestResult{
 		AccountID:  accountID,
 		Capability: capability,
-		Status:     "unknown",
+		Status:     accountStatusUnknown,
+	}
+	if err := AppStore.BeginAccountTest(accountID); err != nil {
+		return nil, fmt.Errorf("begin account test: %w", err)
 	}
 
 	if account.Type == "guest" {
@@ -43,10 +46,7 @@ func TestAccount(accountID, capability string) (*AccountTestResult, error) {
 		}
 		text, err := runGuestChatProbe()
 		if err != nil {
-			result.Status = "invalid"
-			result.Message = err.Error()
-			_ = AppStore.UpdateAccountStatus(accountID, "invalid", result.Message, false)
-			return result, nil
+			return finishFailedAccountTest(result, err), nil
 		}
 		result.OK = true
 		result.Status = "valid"
@@ -63,10 +63,22 @@ func TestAccount(accountID, capability string) (*AccountTestResult, error) {
 		return result, nil
 	}
 
-	if capability != "chat" && !accountHasQianwenLoginMaterial(*account) {
-		result.Status = "invalid"
-		result.Message = "账号当前只有 qianwen.com 访客态 Cookie，缺少真实登录票据；对话可能可用，但生图/生视频会返回登录卡片。请重新扫码登录后再测试该能力。"
+	if !accountHasQianwenLoginMaterial(*account) {
+		result.Status = accountStatusInvalid
+		result.Message = "账号当前只有 qianwen.com 游客态 Cookie，缺少真实登录票据；游客回复不能作为登录账号测活结果。请重新扫码登录。"
+		_ = AppStore.UpdateAccountStatus(accountID, accountStatusInvalid, result.Message, false)
 		return result, nil
+	}
+
+	client, err := newQwenWebClient(*account)
+	if err != nil {
+		return finishFailedAccountTest(result, err), nil
+	}
+	identityCtx, identityCancel := context.WithTimeout(context.Background(), 20*time.Second)
+	_, err = client.probeLoginIdentity(identityCtx)
+	identityCancel()
+	if err != nil {
+		return finishFailedAccountTest(result, err), nil
 	}
 
 	if capability == "image" || capability == "video" {
@@ -80,10 +92,7 @@ func TestAccount(accountID, capability string) (*AccountTestResult, error) {
 				Size:   "1024x1024",
 			})
 			if err != nil {
-				result.Status = "unknown"
-				result.Message = err.Error()
-				_ = AppStore.UpdateAccountStatus(accountID, "unknown", result.Message, false)
-				return result, nil
+				return finishFailedAccountTest(result, err), nil
 			}
 			result.OK = len(media.URLs) > 0
 			result.Status = "valid"
@@ -100,10 +109,7 @@ func TestAccount(accountID, capability string) (*AccountTestResult, error) {
 			Resolution:  "720P",
 		})
 		if err != nil {
-			result.Status = "unknown"
-			result.Message = err.Error()
-			_ = AppStore.UpdateAccountStatus(accountID, "unknown", result.Message, false)
-			return result, nil
+			return finishFailedAccountTest(result, err), nil
 		}
 		result.OK = len(media.URLs) > 0
 		result.Status = "valid"
@@ -113,13 +119,6 @@ func TestAccount(accountID, capability string) (*AccountTestResult, error) {
 		return result, nil
 	}
 
-	client, err := newQwenWebClient(*account)
-	if err != nil {
-		result.Status = "invalid"
-		result.Message = err.Error()
-		_ = AppStore.UpdateAccountStatus(accountID, "invalid", result.Message, false)
-		return result, nil
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	text, _, err := client.chat(ctx, &ChatRequest{
@@ -129,10 +128,7 @@ func TestAccount(accountID, capability string) (*AccountTestResult, error) {
 		},
 	})
 	if err != nil {
-		result.Status = "unknown"
-		result.Message = err.Error()
-		_ = AppStore.UpdateAccountStatus(accountID, "unknown", result.Message, false)
-		return result, nil
+		return finishFailedAccountTest(result, err), nil
 	}
 	result.OK = true
 	result.Status = "valid"
@@ -140,6 +136,16 @@ func TestAccount(accountID, capability string) (*AccountTestResult, error) {
 	result.ResponseText = text
 	_ = AppStore.UpdateAccountStatus(accountID, "valid", "", true)
 	return result, nil
+}
+
+func finishFailedAccountTest(result *AccountTestResult, err error) *AccountTestResult {
+	result.Status = accountStatusUnknown
+	result.Message = err.Error()
+	if looksQianwenAccountStateError(result.Message) {
+		result.Status = accountStatusInvalid
+	}
+	_ = AppStore.UpdateAccountStatus(result.AccountID, result.Status, result.Message, false)
+	return result
 }
 
 func runGuestChatProbe() (string, error) {

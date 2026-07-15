@@ -39,7 +39,12 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 				writeAccountLookupError(w, err)
 				return
 			}
-			if !loginAccount.Enabled || !accountSupportsCapability(*loginAccount, "chat") {
+			runnable, runnableErr := AppStore.IsAccountRunnable(*loginAccount, "chat")
+			if runnableErr != nil {
+				writeAPIError(w, http.StatusInternalServerError, "account_state_check_failed", runnableErr.Error())
+				return
+			}
+			if !runnable {
 				writeAPIError(w, http.StatusFailedDependency, "login_account_unavailable", "Selected account is not enabled for chat.")
 				return
 			}
@@ -73,6 +78,10 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleLoginChatRequest(w http.ResponseWriter, r *http.Request, req *ChatRequest, account *AccountRecord) {
+	if err := AppStore.BeginAccountAttempt(account.ID); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "account_state_update_failed", err.Error())
+		return
+	}
 	client, err := newQwenWebClient(*account)
 	if err != nil {
 		recordQianwenProviderFailure(account.ID, err)
